@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurazione MaterialTime</title>
+    <!-- Bootstrap CSS Locale (assicurati che il percorso sia corretto) -->
+    <link href="bootstrap.min.css" rel="stylesheet"> 
+    <!-- Bootstrap Icons CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Stili CSS Personalizzati (assicurati che il percorso sia corretto) -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-clock-history me-2"></i>Configurazione materialTime
+            </a>
+        </div>
+    </nav>
+
+    <!-- Contenitore principale, inizialmente nascosto e mostrato da JavaScript -->
+    <div class="container mt-4 d-none"> 
+        <div id="alert-placeholder"></div>
+
+        <!-- Card Stato Attuale Orologio -->
+        <div class="card data-card mb-4 shadow-sm">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-hdd-stack me-2"></i>Stato Attuale materialTime</h5>
+                <button id="refresh-status-btn" class="btn btn-sm btn-outline-primary" title="Aggiorna Stato">
+                    <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <strong><i class="bi bi-calendar-event me-1"></i>Ora materialTime:</strong>
+                        <span id="current-clock-time" class="data-value">N/D</span>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <strong><i class="bi bi-watch me-1"></i>Formato Ora:</strong>
+                        <span id="current-format12h" class="data-value">N/D</span>
+                    </div>
+                     <div class="col-md-6 mb-3">
+                        <strong><i class="bi bi-lightbulb me-1"></i>Sempre Attivo (AlwaysOn):</strong>
+                        <span id="current-alwaysOn" class="data-value">N/D</span>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <strong><i class="bi bi-geo-alt-fill me-1"></i>Timezone Attuale:</strong>
+                        <span id="current-clock-timezone" class="data-value">N/D</span>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <strong><i class="bi bi-sliders2 me-1"></i>Modalità Operativa:</strong>
+                        <span id="current-op-mode" class="data-value">N/D</span>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <small class="text-muted">
+                    <i class="bi bi-info-circle me-1"></i>Ultimo stato ricevuto: <span id="last-status-timestamp">N/D</span>
+                </small>
+            </div>
+        </div>
+
+        <!-- Card Imposta Nuova Configurazione -->
+        <div class="card config-card mb-4 shadow-sm">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Imposta Nuova Configurazione</h5>
+            </div>
+            <div class="card-body">
+                <form id="config-form">
+                    <div class="mb-3">
+                        <label for="timezone" class="form-label"><i class="bi bi-geo-alt me-1"></i>Timezone</label>
+                        <select class="form-select" id="timezone" name="timezone" aria-describedby="timezoneHelp" required>
+                            <option value="" disabled selected>Caricamento timezone...</option> 
+                        </select>
+                        <div id="timezoneHelp" class="form-text">
+                            Seleziona il timezone desiderato per materialTime.
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-6 mb-3">
+                            <label class="form-label"><i class="bi bi-hourglass-split me-1"></i>Formato Ora</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="format12h" name="format12h">
+                                <label class="form-check-label" for="format12h">Attiva formato 12 Ore (AM/PM)</label>
+                            </div>
+                        </div>
+                         <div class="col-sm-6 mb-3">
+                            <label class="form-label"><i class="bi bi-power me-1"></i>Modalità Sempre Attivo</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="alwaysOn" name="alwaysOn">
+                                <label class="form-check-label" for="alwaysOn">Disabilita standby in oscurità</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr> 
+                    
+                    <h6 class="mb-2"><i class="bi bi-tools me-1"></i>Comandi di Servizio</h6>
+                    <div class="form-text mb-2">Seleziona un comando da eseguire. materialTime potrebbe tornare in "Time Mode" automaticamente dopo un timeout.</div>
+                    
+                    <div class="btn-group w-100 mb-3" role="group" aria-label="Comandi di servizio">
+                        <input type="radio" class="btn-check" name="serviceCommand" id="cmd-timeMode" value="none" autocomplete="off" checked> 
+                        <label class="btn btn-outline-secondary" for="cmd-timeMode"><i class="bi bi-clock me-1"></i>Time Mode</label>
+
+                        <input type="radio" class="btn-check" name="serviceCommand" id="cmd-allIN" value="allIN" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="cmd-allIN"><i class="bi bi-box-arrow-in-down-right me-1"></i>ALL IN</label>
+
+                        <input type="radio" class="btn-check" name="serviceCommand" id="cmd-allOUT" value="allOUT" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="cmd-allOUT"><i class="bi bi-box-arrow-up-right me-1"></i>ALL OUT</label>
+                    </div>
+                    
+                    <hr> 
+                    
+                    <button type="submit" class="btn btn-primary w-100 btn-lg">
+                        <i class="bi bi-send-check me-1"></i>Invia Configurazione a materialTime
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ========== INIZIO DANGER ZONE ========== -->
+        <div class="danger-zone-wrapper my-4 p-3 border border-danger rounded shadow-sm"> 
+             <!-- Card per il Reset WiFi all'interno della Danger Zone -->
+            <div class="card border-danger mt-3"> 
+                <div class="card-body">
+                    <h5 class="card-title text-danger"><i class="bi bi-wifi-off me-2"></i>Reset Credenziali WiFi</h5>
+                    <p class="card-text">Se hai cambiato la tua rete WiFi (SSID o password), o se materialTime non riesce più a connettersi alla rete domestica, puoi utilizzare questa opzione per cancellare le credenziali WiFi salvate.</p>
+                    <button type="button" class="btn btn-danger w-100" id="resetWifiCredentialsBtn">
+                        <i class="bi bi-shield-slash me-2"></i> Resetta Credenziali WiFi di materialTime
+                    </button>
+                    <small class="form-text text-muted d-block mt-2">
+                        <strong>Attenzione:</strong> materialTime cancellerà le impostazioni WiFi e Timezone attuali e si riavvierà in modalità Access Point (AP). Dovrai riconnetterti al suo AP (solitamente "ClockConfig_ESP32") per inserire le nuove credenziali. L'attuale connessione con questa WebApp verrà persa.
+                    </small>
+                </div>
+            </div>
+            
+            <!-- Potresti aggiungere altre card per future "operazioni delicate" qui dentro danger-zone-wrapper -->
+
+        </div>
+        <!-- ========== FINE DANGER ZONE ========== -->
+
+		<footer class="text-center text-muted mt-5 mb-3">
+            <p class="mb-0"><small>© <span id="current-year">2024</span> materialTime.</small></p>
+            <p class="mb-0"><small>Tutti i diritti riservati.</small></p>
+        </footer>
+	</div> <!-- Fine container principale -->
+
+    <!-- Overlay Iniziale -->
+    <div id="initial-overlay" class="d-flex justify-content-center align-items-center flex-column vh-100 vw-100 position-fixed top-0 start-0" style="background-color: rgba(0,0,0,0.85); z-index: 2000; color: white;">
+         <div class="card text-center p-3 p-sm-4 shadow bg-dark" style="max-width: 90%; width: 450px;">
+            <div class="card-body">
+                <div style="font-size: 3rem; margin-bottom: 0.5rem;"><i class="bi bi-hdd-network"></i></div>
+                <h4 class="card-title mb-3">Connessione a MaterialTime</h4>
+                <p class="card-text lead fs-6" id="initial-overlay-message">Per iniziare, accendi il tuo MaterialTime e premi il pulsante 'Setup'.<br>Attendi che il LED blu indichi una connessione di rete stabile (potrebbe richiedere il portale WiFiManager la prima volta).</p>
+                <div id="initial-overlay-spinner" class="spinner-border text-light my-3 d-none" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Caricamento...</span>
+                </div>
+                <!-- Pulsante "confirmClockConnectedBtn" commentato o rimosso se non usato da script.js -->
+                <!-- 
+                <button class="btn btn-primary btn-lg w-100 mt-2 d-none" id="confirmClockConnectedBtn"> 
+                    <i class="bi bi-check-circle-fill me-2"></i>OK, Orologio Connesso e Pronto
+                </button>
+                -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Conferma Invio Configurazione -->
+    <div class="modal fade" id="confirmSubmitModal" tabindex="-1" aria-labelledby="confirmSubmitModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+         <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmSubmitModalLabel"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Conferma Invio Configurazione</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="modalCloseButton"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Stai per inviare la nuova configurazione al tuo MaterialTime.</p>
+                    <div id="modal-dynamic-message-area">
+                        <p>Assicurati che MaterialTime sia in modalità 'Setup' e connesso alla rete.</p>
+                    </div>
+                    <p class="fw-bold mt-3">Sei pronto per procedere?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelSubmitBtn">Annulla</button>
+                    <button type="button" class="btn btn-primary" id="proceedWithSubmitBtn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        OK, Invia Configurazione
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+	
+	<!-- Modale di Conferma Reset WiFi -->
+	<div class="modal fade" id="confirmResetWifiModal" tabindex="-1" aria-labelledby="confirmResetWifiModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="confirmResetWifiModalLabel"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i> Conferma Reset Credenziali WiFi</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="closeResetWifiModalBtn"></button>
+				</div>
+				<div class="modal-body">
+					<p>Sei assolutamente sicuro di voler resettare le credenziali WiFi salvate su materialTime?</p>
+					<ul>
+						<li>materialTime <strong>cancellerà</strong> le attuali impostazioni WiFi e Timezone.</li>
+						<li>Si <strong>riavvierà</strong> in modalità Access Point (AP).</li>
+						<li>Dovrai <strong>riconnettere il tuo smartphone/PC</strong> all'AP di materialTime (es. "materialTime_Config") per inserire le nuove credenziali.</li>
+						<li>L'attuale connessione tra questa WebApp e materialTime <strong>verrà persa</strong>.</li>
+					</ul>
+					<p>Questa operazione è utile se hai cambiato router, password WiFi, o se materialTime non si connette più.</p>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelResetWifiBtn">Annulla</button>
+					<button type="button" class="btn btn-danger" id="proceedWithWifiResetBtn">
+						<span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+						<i class="bi bi-wifi-off"></i> Sì, Resetta e Riavvia materialTime
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+    <!-- Bootstrap JS Bundle (include Popper) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <!-- Il tuo script.js (assicurati che il percorso sia corretto) -->
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+/*
+    style.css - Foglio di Stile Personalizzato per MaterialTime Configurator
+    -----------------------------------------------------------------------
+    Questo file contiene stili CSS personalizzati per:
+    1. Sovrascrivere o integrare gli stili forniti da un tema Bootstrap (come Cyborg da Bootswatch).
+    2. Aggiungere stili specifici per elementi unici della nostra webapp.
+    
+    Quando si usa un tema Bootstrap completo come Cyborg, molti stili di base
+    (colori, font, sfondi dei componenti) sono già definiti dal tema.
+    Questo file si concentra quindi su affinamenti e personalizzazioni.
+*/
+
+/* Impostazioni globali per il corpo della pagina */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden; 
+}
+
+/* Stile per il brand/logo nella navbar */
+.navbar-brand {
+    font-weight: bold; 
+}
+
+/* Stile per i valori mostrati nella card "Stato Attuale" */
+.data-card .data-value {
+    font-weight: 500; 
+    color: var(--bs-primary); /* Usa la variabile CSS --bs-primary definita da Cyborg/Bootstrap */
+}
+.data-card .data-value:empty::after {
+    content: "N/D"; 
+    color: var(--bs-secondary); 
+}
+
+
+/* Stile personalizzato per gli alert dinamici */
+#alert-placeholder .alert {
+    border-left-width: 5px; 
+    /* Considerazione: Cyborg potrebbe già avere un bordo. Se sì, e vuoi SOLO quello laterale, 
+       potresti dover resettare gli altri bordi: border-top:0; border-right:0; border-bottom:0;
+       Ma solitamente un doppio bordo non è un grosso problema se sottile. */
+}
+#alert-placeholder .alert-success {
+    border-left-color: var(--bs-success);
+}
+#alert-placeholder .alert-danger {
+    border-left-color: var(--bs-danger);
+}
+#alert-placeholder .alert-warning {
+    border-left-color: var(--bs-warning);
+}
+#alert-placeholder .alert-info {
+    border-left-color: var(--bs-info);
+}
+
+/* Stile per l'overlay iniziale che copre tutta la pagina */
+#initial-overlay .card {
+    border: 1px solid #444; /* Cyborg usa --bs-border-color, potresti usare var(--bs-border-color) o var(--bs-border-color-translucent) */
+                               /* #444 è un grigio scuro, potrebbe andare bene. */
+}
+#initial-overlay-message {
+    /* Cyborg usa --bs-secondary-color per testo secondario, o --bs-body-color con opacità.
+       #adb5bd è un grigio standard di Bootstrap, potrebbe essere ridefinito da Cyborg.
+       Verifica che sia ben leggibile su sfondo #222 (bg-dark di Cyborg). */
+    color: #adb5bd; 
+}
+#initial-overlay .btn-primary {
+    /* Cyborg sovrascriverà già .btn-primary. Queste regole sono probabilmente ridondanti
+       a meno che tu non voglia un aspetto DIVERSO dal btn-primary standard di Cyborg
+       SOLO all'interno dell'overlay. */
+    /* background-color: var(--bs-primary); */ /* Probabilmente già fatto da Cyborg */
+    /* border-color: var(--bs-primary); */   /* Probabilmente già fatto da Cyborg */
+    /* color: #fff; */ /* O il colore di testo corretto per il primario di Cyborg.
+                         Cyborg usa una variabile come --bs-btn-color o calcola il contrasto. */
+}
+#initial-overlay .btn-primary:hover {
+    /* Anche l'hover è gestito da Cyborg. 
+       Usare `filter: brightness()` può essere un modo semplice per modificarlo
+       senza conoscere i colori esatti, ma Cyborg ha già i suoi stati :hover. */
+    /* filter: brightness(115%); */ 
+}
+
+
+/* Regolazioni per la responsività su schermi più piccoli (es. smartphone) */
+@media (max-width: 767.98px) { /* Breakpoint 'md' di Bootstrap */
+    .container.mt-4 { 
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .btn-lg {
+        font-size: 1rem; 
+        padding-top: 0.6rem; /* Leggermente ridotto per compensare la dimensione del font */
+        padding-bottom: 0.6rem;
+    }
+    #initial-overlay .card-title {
+        font-size: 1.3rem; /* Leggermente ridotto rispetto a 1.5rem per mobile */
+    }
+     #initial-overlay .card-text {
+        font-size: 0.85rem; /* Leggermente ridotto rispetto a 0.9rem per mobile */
+    }
+}
+
+/* Gestione dello scroll del body quando l'overlay è attivo/inattivo */
+/* Questa logica è importante per prevenire lo scroll della pagina quando un modale o overlay è attivo. */
+/* Il JavaScript dovrebbe aggiungere/rimuovere la classe 'overlay-active' o 'modal-open' (Bootstrap lo fa per i modali) al body. */
+body.overlay-active { /* Se usi una tua classe custom per l'overlay a schermo intero */
+    overflow: hidden;
+}
+/* Bootstrap aggiunge `modal-open` al body quando un modale è attivo, che ha già `overflow: hidden;`.
+   Quindi, la classe `overlay-active` è utile principalmente se hai un overlay a schermo intero
+   che NON è un modale Bootstrap. */
+
+
+/* Stile per i separatori <hr> su tema scuro */
+hr {
+    /* Cyborg default per hr:
+       margin: 1rem 0;
+       color: inherit; (questo è importante)
+       border: 0;
+       border-top: 1px solid; (usa currentColor)
+       opacity: .25;
+       Se vuoi più visibilità, puoi aumentare l'opacità o specificare un colore: */
+    /* opacity: 0.4; */
+    /* border-top-color: rgba(255, 255, 255, 0.25); // Esempio colore esplicito */
+}
+
+/*
+   ========================================
+   STILI PER LA DANGER ZONE
+   ========================================
+*/
+.danger-zone-wrapper {
+    /* Scegli uno stile: giallo warning o rosso danger */
+    
+    /* Stile Giallo Warning (meno aggressivo) */
+    background-color: var(--bs-warning-bg-subtle, #fff3cd); /* Usa variabile Bootstrap 5.3+ se disponibile, altrimenti fallback */
+    border: 1px solid var(--bs-warning-border-subtle, #ffeeba);
+    
+    /* Stile Rosso Danger (più impattante) - Decommenta questo e commenta il giallo se preferisci */
+    /*
+    background-color: var(--bs-danger-bg-subtle, #f8d7da); 
+    border: 1px solid var(--bs-danger-border-subtle, #f5c6cb);
+    */
+    
+    border-radius: var(--bs-border-radius); /* Usa il raggio del bordo di Bootstrap */
+    /* padding e margin sono già gestiti nell'HTML con classi Bootstrap (p-3, my-4) */
+}
+
+.danger-zone-title {
+    font-weight: bold;
+    /* Il colore text-danger è già applicato nell'HTML, quindi qui non serve,
+       ma se volessi forzarlo ulteriormente: */
+    /* color: var(--bs-danger) !important; */
+}
+
+/* Card interna alla Danger Zone */
+.danger-zone-wrapper .card {
+    /* La card interna dovrebbe avere uno sfondo che contrasti con quello della danger-zone-wrapper.
+       Cyborg dovrebbe rendere la card di default scura (es. --bs-secondary-bg).
+       Se la danger-zone-wrapper ha uno sfondo chiaro (giallo/rosso chiaro), la card scura di Cyborg
+       creerà già un buon contrasto.
+       Se vuoi forzare uno sfondo specifico per la card interna: */
+    /* background-color: var(--bs-card-bg); // Usa lo sfondo card standard di Cyborg */
+    
+    /* Il border-danger applicato nell'HTML (`<div class="card border-danger mt-3">`)
+       userà var(--bs-danger) per il colore del bordo, che è corretto. */
+}
+
+.danger-zone-wrapper .card-title {
+    /* La classe text-danger è già applicata nell'HTML, ma per specificità: */
+    color: var(--bs-danger) !important; 
+}
+
+/* Testo all'interno della Danger Zone per leggibilità */
+.danger-zone-wrapper p.text-muted.small { /* Per il testo descrittivo della zona */
+    /* Cyborg userà un colore per text-muted. 
+       Se vuoi renderlo leggermente più scuro/chiaro per contrasto con lo sfondo della danger-zone: */
+    /* color: #868e96; // Esempio */
+    /* Controlla la leggibilità con lo sfondo scelto per danger-zone-wrapper */
+}
+
+.danger-zone-wrapper .card .card-text,
+.danger-zone-wrapper .card .form-text { /* Per il testo dentro la card del reset */
+    /* Cyborg dovrebbe gestire il colore del testo della card standard (es. --bs-body-color).
+       Assicurati che sia leggibile. */
+    /* color: var(--bs-body-color); // Esempio per forzare il colore standard */
+}
