@@ -1,14 +1,14 @@
-// MODIFICA QUI: Importiamo l'intero pacchetto invece di singole funzioni
-import * as dateFnsTz from 'date-fns-tz';
-import { getUnixTime } from 'date-fns';
+// MODIFICA QUI: Usiamo la sintassi CommonJS 'require'
+const { utcToZonedTime, format } = require('date-fns-tz');
+const { getUnixTime } = require('date-fns');
 
 // La funzione handler che Netlify eseguirà
-export async function handler(event, context) {
-  // === INIZIO BLOCCO DI DEBUG ===
-  console.log("--- Funzione getTime avviata (v2) ---");
-  // ============================
+// MODIFICA QUI: Esportiamo con 'module.exports'
+module.exports.handler = async function(event, context) {
+  
+  console.log("--- Funzione getTime avviata (v3 - CommonJS) ---");
 
-  let timezoneIdentifier = event.queryStringParameters.tz || 'UTC';
+  let timezoneIdentifier = (event.queryStringParameters && event.queryStringParameters.tz) || 'UTC';
   if (typeof timezoneIdentifier !== 'string' || timezoneIdentifier.trim() === '') {
     timezoneIdentifier = 'UTC';
   }
@@ -17,16 +17,16 @@ export async function handler(event, context) {
 
   try {
     const nowUtc = new Date();
-    console.log(`Passo 2: Oggetto Date UTC creato con successo: ${nowUtc.toISOString()}`);
+    console.log(`Passo 2: Oggetto Date UTC creato: ${nowUtc.toISOString()}`);
+
     const unixTest = getUnixTime(nowUtc);
     console.log(`Passo 3: Test 'date-fns' (getUnixTime) OK. Valore: ${unixTest}`);
 
-    // MODIFICA QUI: Usiamo la funzione accedendo dall'oggetto importato
-    const nowInTimezone = dateFnsTz.utcToZonedTime(nowUtc, timezoneIdentifier);
+    // Ora proviamo a usare le funzioni importate
+    const nowInTimezone = utcToZonedTime(nowUtc, timezoneIdentifier);
     console.log(`Passo 4: 'utcToZonedTime' eseguito con successo.`);
 
-    // MODIFICA QUI: Usiamo la funzione accedendo dall'oggetto importato
-    const formattedDateTime = dateFnsTz.format(nowInTimezone, 'yyyy-MM-dd HH:mm:ss', {
+    const formattedDateTime = format(nowInTimezone, 'yyyy-MM-dd HH:mm:ss', {
       timeZone: timezoneIdentifier,
     });
     console.log(`Passo 5: Formattazione finale completata: '${formattedDateTime}'`);
@@ -78,4 +78,4 @@ export async function handler(event, context) {
       body: JSON.stringify(errorResponse),
     };
   }
-}
+};
