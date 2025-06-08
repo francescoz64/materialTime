@@ -1,35 +1,18 @@
-// MODIFICA QUI: Usiamo la sintassi CommonJS 'require'
 const { utcToZonedTime, format } = require('date-fns-tz');
 const { getUnixTime } = require('date-fns');
 
-// La funzione handler che Netlify eseguirà
-// MODIFICA QUI: Esportiamo con 'module.exports'
 module.exports.handler = async function(event, context) {
-  
-  console.log("--- Funzione getTime avviata (v3 - CommonJS) ---");
-
   let timezoneIdentifier = (event.queryStringParameters && event.queryStringParameters.tz) || 'UTC';
   if (typeof timezoneIdentifier !== 'string' || timezoneIdentifier.trim() === '') {
     timezoneIdentifier = 'UTC';
   }
-  
-  console.log(`Passo 1: Timezone richiesto: '${timezoneIdentifier}'`);
 
   try {
     const nowUtc = new Date();
-    console.log(`Passo 2: Oggetto Date UTC creato: ${nowUtc.toISOString()}`);
-
-    const unixTest = getUnixTime(nowUtc);
-    console.log(`Passo 3: Test 'date-fns' (getUnixTime) OK. Valore: ${unixTest}`);
-
-    // Ora proviamo a usare le funzioni importate
     const nowInTimezone = utcToZonedTime(nowUtc, timezoneIdentifier);
-    console.log(`Passo 4: 'utcToZonedTime' eseguito con successo.`);
-
     const formattedDateTime = format(nowInTimezone, 'yyyy-MM-dd HH:mm:ss', {
       timeZone: timezoneIdentifier,
     });
-    console.log(`Passo 5: Formattazione finale completata: '${formattedDateTime}'`);
 
     const response = {
       success: true,
@@ -47,11 +30,6 @@ module.exports.handler = async function(event, context) {
     };
 
   } catch (error) {
-    console.error("!!! ERRORE CATTURATO NEL BLOCCO CATCH !!!");
-    console.error(`TIPO DI ERRORE: ${error.name}`);
-    console.error(`MESSAGGIO DI ERRORE: ${error.message}`);
-    console.error("STACK TRACE COMPLETO:", error.stack);
-
     let statusCode = 500;
     let errorCode = 'PROCESSING_ERROR';
     let errorMessage = 'An error occurred while processing the time request.';
@@ -60,6 +38,8 @@ module.exports.handler = async function(event, context) {
       statusCode = 400;
       errorCode = 'INVALID_TIMEZONE';
       errorMessage = `Invalid or unsupported timezone identifier provided: ${timezoneIdentifier}`;
+    } else {
+      console.error("Time API Error:", error);
     }
     
     const errorResponse = {
