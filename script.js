@@ -163,6 +163,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+	async function ensureTargetUrl(baseEndpoint, path, promptMessage, defaultPromptValue) {
+		
+		
+		let targetUrl = null;
+		if (baseEndpoint) {
+			try {
+				const baseUrl = new URL(baseEndpoint);
+				baseUrl.pathname = path;
+				targetUrl = baseUrl.href;
+			} catch (e) { /* ignora */ }
+		}
+
+		if (!targetUrl) {
+			targetUrl = prompt(promptMessage, defaultPromptValue);
+		}
+		return targetUrl; // Restituisce l'URL o null se l'utente annulla
+		
+	}
+
+
 
     // Mostra/Nasconde uno spinner su un pulsante e ne disabilita/abilita l'interazione.
     function showButtonSpinner(buttonElement, show = true, spinnerText = "Attendere...") {
@@ -379,34 +399,40 @@ document.addEventListener('DOMContentLoaded', () => {
    
    
    
-    // --- LOGICA DI AVVIO DELL'APPLICAZIONE ---
-    // Tenta di caricare lo stato iniziale da un mock server (per test locali).
-    async function fetchInitialStatusForMockTest() {
+    // Questa funzione chiama il nostro nuovo server Netlify, ottiene l'ora
+    // e la restituisce. Gestisce anche gli errori.
+    async function fetchCurrentTimeFromServer(timezone) {
 		
 		
-        setAppState(APP_STATES.WAITING_FOR_DATA); // Assicura che l'overlay sia mostrato
-        if(initialOverlayMessage) initialOverlayMessage.textContent = "Caricamento stato iniziale dal mock server...";
+        // Usa il percorso relativo che funzionerà sia in locale (netlify dev) che in produzione.
+        const serverUrl = `/.netlify/functions/getTime?tz=${encodeURIComponent(timezone)}`;
+        console.log(`Richiesta ora corrente al server Netlify per timezone: ${timezone}`);
 
         try {
-            // NOTA: L'URL del mock server potrebbe cambiare.
-            const response = await fetch(`http://localhost:3000/status`); 
-            if (!response.ok) throw new Error(`Errore HTTP: ${response.status} - ${response.statusText}`);
-            const clockData = await response.json();
-            handleClockData(clockData); // Processa i dati ricevuti
-        } catch (e) {
-            console.error("Errore nel caricare lo stato iniziale dal mock server:", e);
-            showAlert(`Errore nel caricare lo stato iniziale dal mock server: ${e.message}`, "danger", 10000);
-            if(initialOverlayMessage) initialOverlayMessage.textContent = `Errore caricamento: ${e.message}. Riprova o controlla il mock server.`;
-            if(initialOverlaySpinner) initialOverlaySpinner.style.display = 'none'; // Nascondi spinner in caso di errore
-            // Lo stato rimane WAITING_FOR_DATA.
+            const response = await fetch(serverUrl, { signal: AbortSignal.timeout(8000) }); // Timeout 8s
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Errore sconosciuto dal server ora.');
+            }
+            const timeData = await response.json();
+            if (timeData.success) {
+                return timeData.datetime; // Restituisce solo la stringa "YYYY-MM-DD HH:MM:SS"
+            } else {
+                throw new Error(timeData.message || 'Il server ha restituito un errore.');
+            }
+        } catch (error) {
+            console.error("Errore nel fetch dell'ora dal server Netlify:", error);
+            showAlert(`Impossibile sincronizzare l'ora dal server: ${error.message}`, 'danger');
+            return null; // Restituisce null in caso di fallimento
         }
 		
     }
 
-
-
-
-
+   
+   
+   
+   
+    // --- LOGICA DI AVVIO DELL'APPLICAZIONE ---
     // Carica lo stato iniziale dai parametri dell'URL (metodo per produzione quando la WebApp è hostata esternamente).
     function fetchInitialStatusFromURLParams() {
 		
@@ -450,25 +476,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		
         console.log("Window loaded. Initializing app...");
         populateTimezoneSelect(); // Popola il <select> dei timezone immediatamente.
-
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        // DECIDI QUALE LOGICA DI AVVIO USARE:
-        // - fetchInitialStatusForMockTest(): Per testare con un server mock locale.
-        // - fetchInitialStatusFromURLParams(): Per produzione (quando l'ESP32
-        //   potrebbe reindirizzare a questa pagina con i dati di stato nell'URL,
-        //   o se la pagina è servita direttamente dall'ESP32).
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        const useMockServer = false; // Cambia a true per testare con il mock server
-
-        if (useMockServer) {
-            fetchInitialStatusForMockTest();
-        } else {
-            // Se la WebApp è servita dall'ESP32 stesso, non ci sarà un parametro 'status' nell'URL iniziale.
-            // L'utente dovrà probabilmente premere "Aggiorna Stato" o l'ESP32 dovrà inviare lo stato
-            // in qualche altro modo (non implementato qui, si affida al refresh manuale o al prompt per l'URL).
-            fetchInitialStatusFromURLParams(); 
-        }
+		// L'app si avvia sempre cercando i parametri nell'URL.
+        fetchInitialStatusFromURLParams(); 
 		
     });
 
@@ -487,10 +496,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             // Prepara il messaggio per il modale di conferma
-            let modalMessages = `<p>Stai per inviare la seguente configurazione all'orologio. Assicurati che sia in modalità 'Setup' e connesso alla tua rete WiFi.</p>`;
-            // Potresti aggiungere un riepilogo delle modifiche qui se lo desideri.
+            let modalMessages = `<p>Stai per inviare la seguente configurazione all'orologio. Assicurati che sia in modalità 'Setup' e connesso alla tua rete WiFi.</p>
+                                 <p class="text-info-emphasis"><i class="bi bi-info-circle-fill me-1"></i>Verrà sincronizzata anche l'ora corrente per il timezone selezionato.</p>`;
             if(modalDynamicMessageArea) modalDynamicMessageArea.innerHTML = modalMessages;
-            setAppState(APP_STATES.CONFIRMING_SUBMIT); // Mostra il modale di conferma
+            setAppState(APP_STATES.CONFIRMING_SUBMIT);
         });
 		
     }
@@ -498,37 +507,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    // Azione quando l'utente conferma l'invio dal modale
-    if(proceedWithSubmitBtn) {
-		
-		
+	// Azione quando l'utente conferma l'invio dal modale
+    if (proceedWithSubmitBtn) {
+        
         proceedWithSubmitBtn.addEventListener('click', async () => {
             if (currentAppState !== APP_STATES.CONFIRMING_SUBMIT) return; // Sicurezza aggiuntiva
             
             setAppState(APP_STATES.SENDING_CONFIG); // Imposta lo stato di invio (mostra spinner sul bottone principale)
-            if(confirmSubmitModal) confirmSubmitModal.hide(); // Nasconde il modale
+            if (confirmSubmitModal) confirmSubmitModal.hide(); // Nasconde il modale
 
+            // 1. Ottieni il timezone selezionato dall'utente.
+            const selectedTimezone = timezoneInput.value;
+
+            // 2. Chiama la nostra nuova funzione per ottenere l'ora corrente dal server Netlify.
+            showAlert(`Sincronizzazione ora per ${selectedTimezone}...`, 'info', 4000);
+            const currentDateTime = await fetchCurrentTimeFromServer(selectedTimezone);
+            
+            // 3. Controlla se il sync dell'ora è fallito.
+            if (currentDateTime === null) {
+                // La funzione fetchCurrentTimeFromServer mostra già un alert di errore.
+                showAlert("Invio configurazione annullato: impossibile sincronizzare l'ora.", "warning");
+                setAppState(APP_STATES.CONFIGURING); // Torna allo stato di configurazione
+                return;
+            }
+
+            showAlert("Ora sincronizzata con successo! Invio configurazione all'orologio...", 'success', 4000);
+
+            // 4. Costruisce il payload JSON da inviare all'ESP32, ora con l'ora valida.
             const selectedServiceCommandRadio = document.querySelector('input[name="serviceCommand"]:checked');
             const selectedServiceCommandValue = selectedServiceCommandRadio ? selectedServiceCommandRadio.value : 'none';
             
-            // Costruisce il payload JSON da inviare all'ESP32
             const payload = {
-                // L'ora ("datetime") non è inviata dalla WebApp in questo design, l'ESP32 la sincronizza separatamente.
-                // Ma l'endpoint dell'ESP32 potrebbe aspettarselo, quindi inviamo un placeholder.
-                datetime: "0000-00-00 00:00:00", 
+                datetime: currentDateTime, // <-- USA L'ORA REALE OTTENUTA
                 format12h: format12hSwitch.checked,
                 alwaysOn: alwaysOnSwitch.checked,
-                timezone: timezoneInput.value, 
+                timezone: selectedTimezone, 
                 allIN: (selectedServiceCommandValue === 'allIN'),
                 allOUT: (selectedServiceCommandValue === 'allOUT')
-                // L'ESP32 si occuperà di salvare il timezone nella sua NVS se modificato.
             };
 
-            let targetUrl = esp32ConfigEndpoint; // Usa l'endpoint salvato se disponibile
-            if (!targetUrl) { // Se l'endpoint non è noto, chiedilo all'utente
-                targetUrl = prompt("URL dell'ESP32 per la configurazione non rilevato. Inserisci l'URL completo (es. http://192.168.1.XX/config o http://materialtime.local/config):", "http://materialtime.local/config");
-            }
-            
+			const targetUrl = await ensureTargetUrl(
+						 esp32ConfigEndpoint,
+						 '/config',
+						 "URL dell'ESP32 per la configurazione non rilevato. Inserisci l'URL completo (es. http://192.168.1.XX/config o http://materialtime.local/config):",
+						 "http://materialtime.local/config"
+					 );
+					 
             if (!targetUrl) { // Se l'utente annulla il prompt
                 showAlert("URL di configurazione ESP32 non fornito. Invio annullato.", "warning");
                 setAppState(APP_STATES.CONFIGURING); // Torna allo stato di configurazione
@@ -545,7 +569,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 let responseBodyForAlert = "";
-                try { responseBodyForAlert = await response.text(); } catch(e) { responseBodyForAlert = "(impossibile leggere corpo risposta)";}
+                try { responseBodyForAlert = await response.text(); } catch(e) { responseBodyForAlert = "(impossibile leggere corpo risposta)"; }
 
                 if (!response.ok) {
                     throw new Error(`Errore ${response.status}: ${response.statusText}. Risposta: ${responseBodyForAlert}`);
@@ -555,7 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Controlla se la risposta contiene un "ACK" (o simile) per conferma
                 if (responseBodyForAlert.toLowerCase().includes("ack") || responseBodyForAlert.toLowerCase().includes("ok")) {
-                     showAlert("Configurazione inviata con successo e confermata dall'orologio!", 'success', 7000);
+                     showAlert("Configurazione e ora inviate con successo e confermate dall'orologio!", 'success', 7000);
                 } else {
                      showAlert(`Configurazione inviata, ma la risposta dall'orologio è inattesa: ${responseBodyForAlert}`, 'warning', 10000);
                 }
@@ -563,16 +587,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Aggiorna l'interfaccia utente con i valori appena inviati (ottimismo UI)
                 // Questo presume che l'ESP32 abbia accettato le modifiche.
                 const newStatusForUI = { ...(lastReceivedClockStatus || {}) }; // Copia lo stato precedente o un oggetto vuoto
-                newStatusForUI.datetime = lastReceivedClockStatus ? lastReceivedClockStatus.datetime : "0000-00-00 00:00:00"; // L'ora non cambia da qui
+                newStatusForUI.datetime = payload.datetime; // <-- USA L'ORA SINCRONIZZATA
                 newStatusForUI.format12h = payload.format12h;
                 newStatusForUI.alwaysOn = payload.alwaysOn;
                 newStatusForUI.timezone = payload.timezone;
                 newStatusForUI.allIN = payload.allIN;
                 newStatusForUI.allOUT = payload.allOUT;
 
-                populateStatusFields(newStatusForUI); // Aggiorna i campi di stato
-                // populateFormFields(newStatusForUI); // Non strettamente necessario ripopolare il form se i valori sono già lì
-                lastReceivedClockStatus = newStatusForUI; // Aggiorna lo stato locale
+                populateStatusFields(newStatusForUI); // Aggiorna i campi di stato con i nuovi dati
+                lastReceivedClockStatus = newStatusForUI; // Aggiorna lo stato locale per coerenza
 
             } catch (error) {
                 console.error("Errore invio configurazione:", error);
@@ -602,11 +625,12 @@ document.addEventListener('DOMContentLoaded', () => {
             showButtonSpinner(refreshStatusBtn, true, "Aggiorno..."); // Mostra spinner sul pulsante di refresh
 
             // Tenta di derivare l'URL per lo stato dall'endpoint di configurazione
-            let statusUrl = esp32ConfigEndpoint ? esp32ConfigEndpoint.replace('/config', '/status') : null;
-            
-            if (!statusUrl) { // Se non derivabile, chiedi all'utente
-                 statusUrl = prompt("Endpoint dell'ESP32 per lo stato non noto. Inserisci l'URL completo (es. http://192.168.1.XX/status o http://materialtime.local/status):", `http://materialtime.local/status`);
-            }
+			const statusUrl = await ensureTargetUrl(
+						 esp32ConfigEndpoint,
+						 '/status',
+						 "Endpoint dell'ESP32 per lo stato non noto. Inserisci l'URL completo (es. http://192.168.1.XX/status o http://materialtime.local/status):",
+						 "http://materialtime.local/status"
+					 );
 
             if (!statusUrl) { // Se l'utente annulla
                 showAlert("URL per lo stato non fornito. Aggiornamento annullato.", "warning");
@@ -670,21 +694,13 @@ document.addEventListener('DOMContentLoaded', () => {
             showButtonSpinner(proceedWithWifiResetBtn, true, "Invio..."); // Spinner sul pulsante del modale
             // Non nascondere il modale qui, lo farà la procedura nel finally.
 
-            // Tenta di derivare l'URL per il reset WiFi
-            let targetResetUrl = null;
-            if (esp32ConfigEndpoint) {
-                try {
-                    const baseUrl = new URL(esp32ConfigEndpoint.replace('/config', ''));
-                    targetResetUrl = new URL('/reset-wifi', baseUrl).href;
-                } catch (e) {
-                    console.warn("Impossibile derivare l'URL di reset da esp32ConfigEndpoint:", esp32ConfigEndpoint);
-                }
-            }
-            
-            if (!targetResetUrl) { // Se non derivabile o esp32ConfigEndpoint non esiste, chiedi all'utente
-                 targetResetUrl = prompt("URL dell'ESP32 per il reset WiFi non noto. Inserisci l'URL completo (es. http://192.168.1.XX/reset-wifi o http://materialtime.local/reset-wifi):", "http://materialtime.local/reset-wifi");
-            }
-
+			const targetResetUrl = await ensureTargetUrl(
+						 esp32ConfigEndpoint, // Passiamo l'endpoint di config come base
+						 '/reset-wifi',       // Specifichiamo il path corretto
+						 "URL dell'ESP32 per il reset WiFi non noto. Inserisci l'URL completo (es. http://192.168.1.XX/reset-wifi o http://materialtime.local/reset-wifi):",
+						 "http://materialtime.local/reset-wifi"
+					 );
+					 
             if (!targetResetUrl) { // Se l'utente annulla il prompt
                 showAlert("URL di reset WiFi per l'ESP32 non fornito. Operazione annullata.", "warning", 10000);
                 if (confirmResetWifiModal) confirmResetWifiModal.hide();
