@@ -18,6 +18,7 @@
   "homepage": "https://github.com/francescoz64/materialTime#readme",
   "description": "",
   "dependencies": {
+    "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0"
   }
 }
