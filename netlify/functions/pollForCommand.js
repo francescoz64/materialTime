@@ -12,7 +12,7 @@ export default async (req) => {
     }
 
     const commandStore = getStore("commands");
-    const pollTimeout = 25000;
+    const pollTimeout = 9000;
     const startTime = Date.now();
 
     while (Date.now() - startTime < pollTimeout) {
