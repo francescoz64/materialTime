@@ -1,26 +1,11 @@
 {
-  "name": "webapp",
+  "name": "materialtime-functions",
   "version": "1.0.0",
-  "description": "",
-  "main": "script.js",
-  "type": "module", 
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/francescoz64/materialTime.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/francescoz64/materialTime/issues"
-  },
-  "homepage": "https://github.com/francescoz64/materialTime#readme",
+  "type": "module",
+  "description": "Serverless functions for materialTime project",
   "dependencies": {
-    "@netlify/blobs": "^7.5.1", 
-    "date-fns": "^2.29.3",
-    "date-fns-tz": "^2.0.0"
+    "@netlify/blobs": "^7.5.1",
+    "date-fns-tz": "^2.0.0",
+    "date-fns": "^2.29.3"
   }
 }
