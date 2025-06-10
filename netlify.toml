@@ -1,10 +1,13 @@
 # netlify.toml
 
-# Questa riga dice a Netlify dove si trovano le tue funzioni.
 [build]
+  # La directory delle funzioni rimane la stessa
   functions = "netlify/functions"
 
-# Questa sezione dice a Netlify di usare il suo sistema di build
-# moderno, che è necessario per la sintassi "import/export".
+# Questa sezione è la nostra unica e ultima speranza
 [functions]
+  # Dice a Netlify di usare il bundler esbuild
   node_bundler = "esbuild"
+  # Questa è la riga MAGICA.
+  # Dice a esbuild: "Il pacchetto '@netlify/blobs' è esterno. Non toccarlo."
+  external_node_modules = ["@netlify/blobs"]
