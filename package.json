@@ -18,6 +18,7 @@
   "homepage": "https://github.com/francescoz64/materialTime#readme",
   "description": "",
   "dependencies": {
+    "@netlify/blobs": "^9.1.6",
     "date-fns": "^2.29.3",
     "date-fns-tz": "^2.0.0"
   }
