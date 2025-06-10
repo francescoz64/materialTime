@@ -4,8 +4,8 @@
   "type": "module",
   "description": "Serverless functions for materialTime project",
   "dependencies": {
-    "@netlify/blobs": "^7.5.1",
-    "date-fns-tz": "^2.0.0",
-    "date-fns": "^2.29.3"
+    "@netlify/blobs": "^9.1.6",
+    "date-fns": "^2.29.3",
+    "date-fns-tz": "^2.0.0"
   }
 }
