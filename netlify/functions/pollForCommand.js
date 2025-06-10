@@ -1,45 +1,35 @@
-const { getStore } = require("@netlify/blobs");
+import { getStore } from "@netlify/blobs";
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-exports.handler = async (event) => {
+export default async (req) => {
 	
 	
-    // I parametri sono in event.queryStringParameters
-    const sessionId = event.queryStringParameters.session_id;
+    const url = new URL(req.url);
+    const sessionId = url.searchParams.get("session_id");
 
     if (!sessionId) {
-        return { statusCode: 400, body: "Missing session_id query parameter" };
+        return new Response("Missing session_id", { status: 400 });
     }
-
-    console.log(`[pollForCommand] Device with session ${sessionId} is polling...`);
 
     const commandStore = getStore("commands");
     const pollTimeout = 25000;
-    const pollInterval = 1000;
     const startTime = Date.now();
 
     while (Date.now() - startTime < pollTimeout) {
         const storedData = await commandStore.get(sessionId, { type: "json" });
-
-        if (storedData && storedData.command) {
+        if (storedData) { // Trovato un comando
             console.log(`[pollForCommand] Found command for ${sessionId}.`);
             await commandStore.delete(sessionId);
-
-            return {
-                statusCode: 200,
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(storedData)
-            };
+            return new Response(JSON.stringify(storedData), {
+                headers: { "Content-Type": "application/json" }
+            });
         }
-        await sleep(pollInterval);
+        await sleep(1000);
     }
-
-    console.log(`[pollForCommand] Poll timeout for ${sessionId}.`);
     
-    return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: 'NO_OP' })
-    };
+    // Timeout
+    return new Response(JSON.stringify({ command: 'NO_OP' }), {
+        headers: { "Content-Type": "application/json" }
+    });
 	
 };

@@ -1,0 +1,10 @@
+# netlify.toml
+
+# Questa riga dice a Netlify dove si trovano le tue funzioni.
+[build]
+  functions = "netlify/functions"
+
+# Questa sezione dice a Netlify di usare il suo sistema di build
+# moderno, che è necessario per la sintassi "import/export".
+[functions]
+  node_bundler = "esbuild"

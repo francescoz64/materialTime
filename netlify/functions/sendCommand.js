@@ -1,49 +1,46 @@
 // A simple in-memory store. CAUTION: This will not work across different serverless instances.
-// Good for low-traffic apps and testing. For production, use Netlify Blobs or a real DB.
-const { getStore } = require("@netlify/blobs");
+import { getStore } from "@netlify/blobs";
 
-// La firma della funzione deve essere 'event', non 'req' o altro
-exports.handler = async (event) => {
+export default async (req) => {
 	
 	
-    if (event.httpMethod !== "POST") {
-        return { statusCode: 405, body: "Method Not Allowed" };
+    if (req.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405 });
     }
-
     try {
-        // Il corpo della richiesta è in event.body e deve essere parsato
-        const { sessionId, command, payload, type } = JSON.parse(event.body);
+        const body = await req.json();
+        const { sessionId, command, payload = {}, type } = body;
 
         if (!sessionId) {
-            // Le risposte devono essere oggetti { statusCode, body }
-            return { statusCode: 400, body: "Missing sessionId" };
+            return new Response("Missing sessionId", { status: 400 });
         }
 
         if (type === 'RESPONSE') {
-            console.log(`[sendCommand] Received RESPONSE for session ${sessionId}:`, payload);
+            if (!payload || !payload.type) return new Response("Invalid response payload", { status: 400 });
+            
+            console.log(`[sendCommand] Storing RESPONSE for ${sessionId}`);
             const responseStore = getStore("responses");
             await responseStore.setJSON(sessionId, {
                 type: payload.type,
                 payload: payload.data,
                 timestamp: Date.now()
             });
-            return { statusCode: 200, body: JSON.stringify({ message: "Response stored." }) };
+            return new Response(JSON.stringify({ message: "Response stored." }), { status: 200 });
         } else {
-            if (!command) {
-                 return { statusCode: 400, body: "Missing command" };
-            }
-            console.log(`[sendCommand] Received COMMAND for session ${sessionId}:`, command);
+            if (!command) return new Response("Missing command", { status: 400 });
+
+            console.log(`[sendCommand] Storing COMMAND for ${sessionId}: ${command}`);
             const commandStore = getStore("commands");
             await commandStore.setJSON(sessionId, {
                 command,
                 payload,
                 timestamp: Date.now()
             });
-            return { statusCode: 202, body: JSON.stringify({ message: "Command queued." }) };
+            return new Response(JSON.stringify({ message: "Command queued." }), { status: 202 });
         }
     } catch (error) {
-        console.error("[sendCommand] Error:", error);
-        return { statusCode: 500, body: "Internal Server Error" };
+        console.error("[sendCommand] Runtime Error:", error);
+        return new Response(`Internal Server Error: ${error.message}`, { status: 500 });
     }
 	
 };
