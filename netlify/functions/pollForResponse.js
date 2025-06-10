@@ -1,17 +1,14 @@
 // funzione che serve per mettere in ascolto la WebApp in attesa di risposte.
-
-import { getStore } from "@netlify/blobs";
-
+const { getStore } = require("@netlify/blobs");
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-export default async (req) => {
+exports.handler = async (event) => {
 	
-    const url = new URL(req.url);
-    const sessionId = url.searchParams.get("session_id");
+    const sessionId = event.queryStringParameters.session_id;
 
 
     if (!sessionId) {
-        return new Response("Missing session_id", { status: 400 });
+        return { statusCode: 400, body: "Missing session_id" };
     }
 
     const responseStore = getStore("responses");
@@ -23,21 +20,17 @@ export default async (req) => {
 
         if (storedResponse) {
             console.log(`[pollForResponse] Found response for ${sessionId}.`);
-            await responseStore.delete(sessionId); // Rimuovi dopo averla letta
-            return new Response(JSON.stringify(storedResponse), {
-                status: 200,
-                headers: { "Content-Type": "application/json" }
-            });
+            await responseStore.delete(sessionId);
+            return {
+                statusCode: 200,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(storedResponse)
+            };
         }
         await sleep(1000);
     }
 
     // Timeout, nessuna nuova risposta
-    return new Response(null, { status: 204 }); // 204 No Content
-	
+    return { statusCode: 204 }; // 204 No Content non richiede un body
+
 };
-
-
-
-
-export const config = { path: "/.netlify/functions/pollForResponse" };

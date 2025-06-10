@@ -1,62 +1,45 @@
-import { getStore } from "@netlify/blobs";
-
-// Helper per il ritardo
+const { getStore } = require("@netlify/blobs");
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-export default async (req) => {
+exports.handler = async (event) => {
 	
-    const url = new URL(req.url);
-    const sessionId = url.searchParams.get("session_id");
-
+	
+    // I parametri sono in event.queryStringParameters
+    const sessionId = event.queryStringParameters.session_id;
 
     if (!sessionId) {
-        return new Response("Missing session_id query parameter", { status: 400 });
+        return { statusCode: 400, body: "Missing session_id query parameter" };
     }
 
     console.log(`[pollForCommand] Device with session ${sessionId} is polling...`);
 
     const commandStore = getStore("commands");
-    
-    // Loop di Long Polling
-    const pollTimeout = 25000; // 25 secondi
-    const pollInterval = 1000;   // 1 secondo
+    const pollTimeout = 25000;
+    const pollInterval = 1000;
     const startTime = Date.now();
 
     while (Date.now() - startTime < pollTimeout) {
-        // Controlla se esiste un comando per questa sessione
         const storedData = await commandStore.get(sessionId, { type: "json" });
 
         if (storedData && storedData.command) {
-            console.log(`[pollForCommand] Found command for ${sessionId}. Sending to device.`);
-            
-            // Rimuovi il comando dallo store per non inviarlo di nuovo
+            console.log(`[pollForCommand] Found command for ${sessionId}.`);
             await commandStore.delete(sessionId);
 
-            return new Response(JSON.stringify(storedData), {
-                status: 200,
+            return {
+                statusCode: 200,
                 headers: { "Content-Type": "application/json" },
-            });
+                body: JSON.stringify(storedData)
+            };
         }
-
         await sleep(pollInterval);
     }
 
-    console.log(`[pollForCommand] Poll timeout for session ${sessionId}. No command.`);
+    console.log(`[pollForCommand] Poll timeout for ${sessionId}.`);
     
-    // Timeout, rispondi con un comando vuoto (No-Operation)
-    return new Response(JSON.stringify({ command: 'NO_OP' }), {
-        status: 200,
+    return {
+        statusCode: 200,
         headers: { "Content-Type": "application/json" },
-    });
+        body: JSON.stringify({ command: 'NO_OP' })
+    };
 	
-};
-
-
-
-
-// Config per Netlify
-export const config = {
-	
-  path: "/.netlify/functions/pollForCommand"
-  
 };
