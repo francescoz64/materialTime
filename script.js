@@ -8,6 +8,8 @@
 */
 document.addEventListener('DOMContentLoaded', () => {
     
+	let isSubmitting = false; // Variabile di blocco globale
+	
     // --- STATI APPLICAZIONE ---
     // Definisce i tre stati fondamentali dell'applicazione.
     // Questa macchina a stati semplificata governa l'abilitazione/disabilitazione dell'intera UI.
@@ -496,44 +498,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	if (proceedWithSubmitBtn) {
 		proceedWithSubmitBtn.addEventListener('click', async () => {
-            // Se il pulsante è già disabilitato, significa che un'operazione è in corso.
-            if (submitConfigBtn.disabled) {
-                console.warn("Submit in corso, ignorato doppio click.");
-                return;
-            }
+			if (isSubmitting) {
+				console.warn("Submit già in corso, nuovo tentativo ignorato.");
+				return;
+			}
+			isSubmitting = true; // Imposta il blocco
+
 			if (confirmSubmitModal) confirmSubmitModal.hide();
 			showButtonSpinner(submitConfigBtn, true, "Invio...");
 
-			const selectedTimezone = timezoneInput.value;
-			const currentDateTime = await fetchCurrentTimeFromServer(selectedTimezone);
-			
-			if (currentDateTime === null) {
-				showAlert("Invio annullato: impossibile sincronizzare l'ora.", "warning");
-				showButtonSpinner(submitConfigBtn, false);
-				return;
+			try { // Aggiungiamo un blocco try...finally per garantire lo sblocco
+				const selectedTimezone = timezoneInput.value;
+				const currentDateTime = await fetchCurrentTimeFromServer(selectedTimezone);
+				
+				if (currentDateTime === null) {
+					showAlert("Invio annullato: impossibile sincronizzare l'ora.", "warning");
+					// Nota: non facciamo return qui, lasciamo che il blocco finally pulisca
+				} else {
+					const selectedServiceCommandRadio = document.querySelector('input[name="serviceCommand"]:checked');
+					const payload = {
+						datetime: currentDateTime,
+						format12h: format12hSwitch.checked,
+						alwaysOn: alwaysOnSwitch.checked,
+						timezone: selectedTimezone,
+						allIN: (selectedServiceCommandRadio.value === 'allIN'),
+						allOUT: (selectedServiceCommandRadio.value === 'allOUT')
+					};
+
+					const success = await sendCommandToServer('SET_CONFIG', payload);
+
+					if (success) {
+						showAlert("Comando di configurazione inviato. Clicca 'Aggiorna Stato' per vedere le modifiche.", "info");
+					} else {
+						showAlert("Errore: impossibile inviare il comando al server.", "danger");
+					}
+				}
+			} finally {
+				// Il blocco `finally` viene eseguito SEMPRE, sia che la logica
+				// abbia successo, sia che fallisca o lanci un'eccezione.
+				// Questo garantisce che il nostro blocco e il nostro spinner
+				// vengano sempre rimossi.
+				showButtonSpinner(submitConfigBtn, false); // Sblocca il pulsante
+				isSubmitting = false; // Rilascia il blocco
+				console.log("Submit completato, blocco rilasciato.");
 			}
-
-			const selectedServiceCommandRadio = document.querySelector('input[name="serviceCommand"]:checked');
-			const payload = {
-				datetime: currentDateTime,
-				format12h: format12hSwitch.checked,
-				alwaysOn: alwaysOnSwitch.checked,
-				timezone: selectedTimezone,
-				allIN: (selectedServiceCommandRadio.value === 'allIN'),
-				allOUT: (selectedServiceCommandRadio.value === 'allOUT')
-			};
-
-			const success = await sendCommandToServer('SET_CONFIG', payload);
-
-			if (success) {
-				showAlert("Comando di configurazione inviato. Clicca 'Aggiorna Stato' per vedere le modifiche.", "info");
-			} else {
-				showAlert("Errore: impossibile inviare il comando al server.", "danger");
-			}
-			
-			showButtonSpinner(submitConfigBtn, false);
 		});
 	}
+	
+	
 
     if (refreshStatusBtn) {
 		refreshStatusBtn.addEventListener('click', async () => {
