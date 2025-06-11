@@ -496,6 +496,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	if (proceedWithSubmitBtn) {
 		proceedWithSubmitBtn.addEventListener('click', async () => {
+            // Se il pulsante è già disabilitato, significa che un'operazione è in corso.
+            if (submitConfigBtn.disabled) {
+                console.warn("Submit in corso, ignorato doppio click.");
+                return;
+            }
 			if (confirmSubmitModal) confirmSubmitModal.hide();
 			showButtonSpinner(submitConfigBtn, true, "Invio...");
 
@@ -532,6 +537,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (refreshStatusBtn) {
 		refreshStatusBtn.addEventListener('click', async () => {
+            // Se il pulsante è già disabilitato, significa che un'operazione è in corso.
+            if (submitConfigBtn.disabled) {
+                console.warn("Submit in corso, ignorato doppio click.");
+                return;
+            }
 			if (currentAppState !== APP_STATES.CONFIGURING) {
                 showAlert("Attendere il completamento dell'operazione corrente.", "warning");
                 return;
