@@ -427,12 +427,9 @@ document.addEventListener('DOMContentLoaded', () => {
    
 	/*
      * Punto di ingresso dell'applicazione.
-     * Esegue una singola chiamata sincrona al backend per ottenere lo stato iniziale,
-     * e poi avvia il polling per gli aggiornamenti futuri.
+     * Avvia la comunicazione e attende pazientemente la prima risposta di stato.
      */
     async function initializeApp() {
-		
-		
         populateTimezoneSelect();
         const urlParams = new URLSearchParams(window.location.search);
         sessionId = urlParams.get('session_id');
@@ -448,35 +445,27 @@ document.addEventListener('DOMContentLoaded', () => {
         setAppState(APP_STATES.INITIALIZING);
         if (initialOverlayMessage) initialOverlayMessage.textContent = "Contatto l'orologio...";
 
-        try {
-            // Unica chiamata per ottenere lo stato iniziale. Netlify reindirizzerà 
-            // la chiamata a /functions/getInitialState.js se non usi la config con 'path'.
-            const response = await fetch(`/.netlify/functions/getInitialState?session_id=${sessionId}`);
-            
-            if (!response.ok) {
-                // Tentiamo di leggere il corpo come JSON, ma se fallisce,
-                // forniamo un oggetto di errore di default. Questo previene
-                // un crash se il server risponde con HTML o testo semplice.
-                const errorBody = await response.json().catch(() => ({ 
-                    error: "Risposta non-JSON dal server." 
-                }));
-                throw new Error(errorBody.error || `Il server ha risposto con ${response.status}`);
+        // Invia il comando per richiedere lo stato iniziale.
+        // Non attendiamo la risposta qui, lasciamo che il polling la gestisca.
+        sendCommandToServer('GET_STATE');
+        
+        // Avvia il ciclo di polling che riceverà lo stato e sbloccherà l'UI.
+        // La funzione `handleClockData` si occuperà di cambiare lo stato da
+        // INITIALIZING a CONFIGURING quando arriverà la prima risposta valida.
+        startPollingForResponses();
+
+        // Aggiungiamo un timeout di sicurezza per l'interfaccia utente.
+        // Se dopo 20 secondi l'app è ancora in stato 'INITIALIZING',
+        // qualcosa è andato storto e lo comunichiamo all'utente.
+        setTimeout(() => {
+            if (currentAppState === APP_STATES.INITIALIZING) {
+                console.error("Timeout di inizializzazione: nessuna risposta di stato ricevuta.");
+                setAppState(APP_STATES.ERROR);
+                if (initialOverlayMessage) initialOverlayMessage.textContent = "L'orologio non risponde. Assicurati che sia acceso e in modalità Setup. Ricarica la pagina per riprovare.";
+                if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
+                if (responsePollController) responsePollController.abort(); // Ferma il polling
             }
-
-            const initialState = await response.json();
-            
-            // Stato ricevuto, ora possiamo procedere
-            handleClockData(initialState); // Questa funzione sbloccherà l'UI
-            
-            // E ora avviamo il polling per tutte le altre comunicazioni future
-            startPollingForResponses();
-
-        } catch (error) {
-            console.error("Errore durante l'inizializzazione:", error);
-            setAppState(APP_STATES.ERROR);
-            if (initialOverlayMessage) initialOverlayMessage.textContent = `Errore di connessione: ${error.message}. Ricarica la pagina.`;
-            if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
-        }
+        }, 20000); // Timeout di 20 secondi
     }
 	
 	
