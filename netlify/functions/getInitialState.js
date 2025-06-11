@@ -3,63 +3,64 @@ import { getStore } from "@netlify/blobs";
 // Funzione helper per l'attesa
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+import { getStore } from "@netlify/blobs";
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default async (req) => {
-    // 1. Estrai il session_id dall'URL
     const url = new URL(req.url);
     const sessionId = url.searchParams.get("session_id");
 
     if (!sessionId) {
         return new Response(JSON.stringify({ error: "Missing session_id" }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" }
+            status: 400, headers: { "Content-Type": "application/json" }
         });
     }
     
-    // 2. Accedi agli store usando gli stessi nomi del tuo codice: "commands" e "responses"
     const commandStore = getStore("commands");
     const responseStore = getStore("responses");
 
     try {
-        // 3. Invia il comando GET_STATE, usando la stessa struttura di `sendCommand`
         console.log(`[getInitialState] Storing command GET_STATE for session ${sessionId}`);
         await commandStore.setJSON(sessionId, {
             command: 'GET_STATE',
-            payload: {}, // Payload vuoto, come fa la tua WebApp
+            payload: {},
             timestamp: Date.now()
         });
 
-        // 4. Mettiti in attesa attiva della risposta (fino a 12 secondi)
         const startTime = Date.now();
-        const timeout = 12000; 
+        // --- MODIFICA CHIAVE QUI ---
+        // Riduciamo il timeout a 9 secondi per rimanere sotto il limite di 10s di Netlify.
+        const timeout = 9000; 
 
         console.log(`[getInitialState] Waiting for STATE_UPDATE response for session ${sessionId}...`);
         while (Date.now() - startTime < timeout) {
-            // Leggi dallo store delle risposte
             const responseData = await responseStore.get(sessionId, { type: "json" });
 
-            // La tua `sendResponseToServer` sull'ESP32 invia un payload con un tipo e dei dati.
-            // La tua `sendCommand` salva questi dati.
-            // Quindi cerchiamo una risposta il cui payload.type sia 'STATE_UPDATE'.
             if (responseData && responseData.type === 'STATE_UPDATE') {
                 console.log(`[getInitialState] Found STATE_UPDATE response for ${sessionId}`);
-                
-                // Pulisci la risposta per non rileggerla
                 await responseStore.delete(sessionId); 
                 
-                // Restituisci il payload.data, che contiene lo stato vero e proprio dell'orologio
+                // NOTA: La tua sendCommand salva un oggetto { type, payload, timestamp }.
+                // La mia versione precedente restituiva responseData.payload, che ora è sbagliato.
+                // Restituiamo l'intero oggetto così la webapp può gestirlo.
+                // Anzi, la webapp si aspetta solo lo stato, quindi `responseData.payload` è giusto,
+                // ma il tuo sendCommand salva `payload.data` dentro `responseData.payload`.
+                // Per coerenza, modifichiamo cosa viene restituito.
+                // La tua `sendResponseToServer` invia: { type: "STATE_UPDATE", data: { ...stato... } }
+                // La tua `sendCommand` salva: { type: "STATE_UPDATE", payload: { ...stato... }, timestamp: ... }
+                // La tua `handleClockData` si aspetta lo stato direttamente.
+                // Quindi `responseData.payload` è l'oggetto di stato corretto da restituire.
                 return new Response(JSON.stringify(responseData.payload), {
                     status: 200,
                     headers: { "Content-Type": "application/json" }
                 });
             }
-            // Attendi un po' prima di controllare di nuovo
             await sleep(500);
         }
 
-        // 5. Se il ciclo finisce, è scattato il timeout
         console.warn(`[getInitialState] Timeout waiting for device response for session ${sessionId}`);
-        return new Response(JSON.stringify({ error: "Timeout: l'orologio non ha risposto in tempo." }), {
-            status: 408, // 408 Request Timeout
+        return new Response(JSON.stringify({ error: "Timeout: l'orologio non ha risposto in tempo (9s)." }), {
+            status: 408,
             headers: { "Content-Type": "application/json" }
         });
 
