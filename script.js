@@ -1,69 +1,82 @@
 /*
-    SCRIPT.JS PER MATERIALTIME - ARCHITETTURA SEMPLIFICATA
+    SCRIPT.JS PER MATERIALTIME - ARCHITETTURA LONG POLLING
     ======================================================
-    - Ora NON configurabile dall'utente via WebApp.
-    - Timezone è configurabile (tramite <select>).
-    - Altre impostazioni (12/24h, alwaysOn, allIN/OUT) sono configurabili.
-    - AGGIUNTA: Funzionalità di reset credenziali WiFi dell'ESP32.
+    Versione: 2.5 (Stabile, Robusta, Commentata)
+    - Comunicazione asincrona con l'ESP32 mediata da un backend serverless.
+    - Gestione degli stati UI semplificata per maggiore robustezza.
+    - Funzionalità di configurazione (Timezone, 12/24h, ecc.) e comandi di servizio.
 */
 document.addEventListener('DOMContentLoaded', () => {
-	
-	
+    
     // --- STATI APPLICAZIONE ---
-    // Definiscono i diversi stati in cui l'applicazione web può trovarsi,
-    // utili per controllare il comportamento dell'UI (es. abilitare/disabilitare pulsanti, mostrare spinner).
+    // Definisce i tre stati fondamentali dell'applicazione.
+    // Questa macchina a stati semplificata governa l'abilitazione/disabilitazione dell'intera UI.
     const APP_STATES = {
-		INITIALIZING: 'INITIALIZING',         // In attesa del sessionId
-		WAITING_FOR_STATE: 'WAITING_FOR_STATE',   // In attesa dello stato iniziale dal server
-		CONFIGURING: 'CONFIGURING',           // Pronto per l'utente
-		SENDING_COMMAND: 'SENDING_COMMAND',     // Invio comando in corso
-		ERROR: 'ERROR'                        // Errore critico
+		INITIALIZING: 'INITIALIZING', // Stato iniziale: in attesa di sessione e primo contatto con l'orologio. UI bloccata.
+		CONFIGURING: 'CONFIGURING',   // Stato operativo: l'app è pronta e l'utente può interagire. UI sbloccata.
+		ERROR: 'ERROR'                // Stato di errore: qualcosa è andato storto (es. no sessionID) e l'app non può continuare.
 	};
 	let currentAppState = APP_STATES.INITIALIZING;
 	let sessionId = null;
-	let responsePollController = null; // Per poter annullare il polling delle risposte
-	let lastReceivedClockStatus = null;    
+	let responsePollController = null; // Oggetto per poter annullare le richieste di polling in corso.
+	let lastReceivedClockStatus = null; // Memorizza l'ultimo stato valido ricevuto dall'orologio.
                                         
 
     // --- ELENCO TIMEZONE CURATO ---
     // Un elenco predefinito di timezone comuni per popolare il <select> nel form.
     const timezonesForSelect = [
+        // Riferimento Globale
         { value: "UTC", text: "Coordinated Universal Time (UTC)" },
-        { value: "Europe/London", text: "(GMT+00:00) Londra, Dublino, Lisbona" },
-        { value: "Europe/Paris", text: "(GMT+01:00) Parigi, Bruxelles, Amsterdam" },
-        { value: "Europe/Berlin", text: "(GMT+01:00) Berlino, Zurigo, Vienna" },
-        { value: "Europe/Rome", text: "(GMT+01:00) Roma" },
-        { value: "Europe/Madrid", text: "(GMT+01:00) Madrid" },
-        { value: "Europe/Athens", text: "(GMT+02:00) Atene, Bucarest, Helsinki" },
-        { value: "Europe/Moscow", text: "(GMT+03:00) Mosca, San Pietroburgo" },
-        { value: "America/New_York", text: "(GMT-05:00) Eastern Time (New York, Toronto)" },
-        { value: "America/Chicago", text: "(GMT-06:00) Central Time (Chicago, Messico City)" },
-        { value: "America/Denver", text: "(GMT-07:00) Mountain Time (Denver, Edmonton)" },
-        { value: "America/Phoenix", text: "(GMT-07:00) Mountain Time (Phoenix - No DST)" },
-        { value: "America/Los_Angeles", text: "(GMT-08:00) Pacific Time (Los Angeles, Vancouver)" },
-        { value: "America/Anchorage", text: "(GMT-09:00) Alaska Time (Anchorage)" },
-        { value: "Pacific/Honolulu", text: "(GMT-10:00) Hawaii Time (Honolulu - No DST)" },
-        { value: "America/Sao_Paulo", text: "(GMT-03:00) San Paolo, Brasilia" },
-        { value: "America/Buenos_Aires", text: "(GMT-03:00) Buenos Aires" },
-        { value: "America/Bogota", text: "(GMT-05:00) Bogotà, Lima (No DST)" },
-        { value: "Asia/Dubai", text: "(GMT+04:00) Dubai, Abu Dhabi" },
-        { value: "Asia/Karachi", text: "(GMT+05:00) Karachi, Tashkent" },
-        { value: "Asia/Kolkata", text: "(GMT+05:30) India Standard Time (Mumbai, Nuova Delhi)" },
-        { value: "Asia/Bangkok", text: "(GMT+07:00) Bangkok, Giacarta, Hanoi" },
-        { value: "Asia/Singapore", text: "(GMT+08:00) Singapore, Kuala Lumpur" },
-        { value: "Asia/Hong_Kong", text: "(GMT+08:00) Hong Kong, Pechino, Taipei" },
-        { value: "Asia/Shanghai", text: "(GMT+08:00) Shanghai" },
-        { value: "Asia/Tokyo", text: "(GMT+09:00) Tokyo, Seoul" },
-        { value: "Africa/Cairo", text: "(GMT+02:00) Cairo" },
-        { value: "Africa/Nairobi", text: "(GMT+03:00) Nairobi" },
-        { value: "Africa/Johannesburg", text: "(GMT+02:00) Johannesburg" },
-        { value: "Australia/Perth", text: "(GMT+08:00) Western Standard Time (Perth - No DST)" },
-        { value: "Australia/Darwin", text: "(GMT+09:30) Central Standard Time (Darwin - No DST)" },
-        { value: "Australia/Adelaide", text: "(GMT+09:30) Central Time (Adelaide)" },
-        { value: "Australia/Brisbane", text: "(GMT+10:00) Eastern Standard Time (Brisbane - No DST)" },
-        { value: "Australia/Sydney", text: "(GMT+10:00) Eastern Time (Sydney, Melbourne)" },
-    ];
 
+        // --- EUROPA ---
+        { value: "Europe/London",      text: "(GMT+00:00) Londra, Dublino, Lisbona" },
+        { value: "Europe/Madrid",      text: "(GMT+01:00) Madrid" },
+        { value: "Europe/Paris",       text: "(GMT+01:00) Parigi, Bruxelles, Amsterdam" },
+        { value: "Europe/Rome",        text: "(GMT+01:00) Roma" },
+        { value: "Europe/Berlin",      text: "(GMT+01:00) Berlino, Zurigo, Vienna" },
+        { value: "Europe/Stockholm",   text: "(GMT+01:00) Stoccolma, Oslo, Copenaghen" },
+        { value: "Europe/Athens",      text: "(GMT+02:00) Atene, Bucarest, Helsinki" },
+        { value: "Europe/Istanbul",    text: "(GMT+03:00) Istanbul" },
+        { value: "Europe/Moscow",      text: "(GMT+03:00) Mosca, San Pietroburgo" },
+
+        // --- AMERICHE ---
+        { value: "America/New_York",   text: "(GMT-05:00) Nord America - Eastern Time (New York)" },
+        { value: "America/Chicago",    text: "(GMT-06:00) Nord America - Central Time (Chicago)" },
+        { value: "America/Denver",     text: "(GMT-07:00) Nord America - Mountain Time (Denver)" },
+        { value: "America/Phoenix",    text: "(GMT-07:00) Nord America - Mountain Time (Phoenix, No-DST)" },
+        { value: "America/Los_Angeles",text: "(GMT-08:00) Nord America - Pacific Time (Los Angeles)" },
+        { value: "America/Anchorage",  text: "(GMT-09:00) Nord America - Alaska Time (Anchorage)" },
+        { value: "Pacific/Honolulu",   text: "(GMT-10:00) Nord America - Hawaii Time (Honolulu, No-DST)" },
+        { value: "America/Sao_Paulo",  text: "(GMT-03:00) Sud America - San Paolo, Brasilia" },
+        { value: "America/Buenos_Aires",text: "(GMT-03:00) Sud America - Buenos Aires" },
+        { value: "America/Santiago",   text: "(GMT-04:00) Sud America - Santiago del Cile" },
+        { value: "America/Bogota",     text: "(GMT-05:00) Sud America - Bogotà, Lima (No-DST)" },
+        
+        // --- ASIA E PACIFICO/OCEANIA ---
+        { value: "Asia/Dubai",         text: "(GMT+04:00) Dubai, Abu Dhabi" },
+        { value: "Asia/Karachi",       text: "(GMT+05:00) Karachi, Tashkent" },
+        { value: "Asia/Kolkata",       text: "(GMT+05:30) India Standard Time (Mumbai, Nuova Delhi)" },
+        { value: "Asia/Bangkok",       text: "(GMT+07:00) Bangkok, Giacarta, Hanoi" },
+        { value: "Asia/Singapore",     text: "(GMT+08:00) Singapore, Hong Kong, Pechino" },
+        { value: "Asia/Shanghai",      text: "(GMT+08:00) Shanghai" },
+        { value: "Asia/Tokyo",         text: "(GMT+09:00) Tokyo, Seoul" },
+        { value: "Australia/Perth",    text: "(GMT+08:00) Australia - Western Time (Perth, No-DST)" },
+        { value: "Australia/Darwin",   text: "(GMT+09:30) Australia - Central Time (Darwin, No-DST)" },
+        { value: "Australia/Adelaide", text: "(GMT+09:30) Australia - Central Time (Adelaide)" },
+        { value: "Australia/Brisbane", text: "(GMT+10:00) Australia - Eastern Time (Brisbane, No-DST)" },
+        { value: "Australia/Sydney",   text: "(GMT+10:00) Australia - Eastern Time (Sydney, Melbourne)" },
+        { value: "Pacific/Auckland",   text: "(GMT+12:00) Auckland, Nuova Zelanda" },
+        
+        // --- AFRICA E MEDIO ORIENTE ---
+        { value: "Asia/Tel_Aviv",      text: "(GMT+02:00) Tel Aviv, Gerusalemme" },
+        { value: "Africa/Cairo",       text: "(GMT+02:00) Cairo" },
+        { value: "Africa/Johannesburg",text: "(GMT+02:00) Johannesburg" },
+        { value: "Asia/Riyadh",        text: "(GMT+03:00) Riyadh, Kuwait, Qatar" },
+        { value: "Africa/Nairobi",     text: "(GMT+03:00) Nairobi, Africa Orientale" },
+        { value: "Africa/Lagos",       text: "(GMT+01:00) Lagos, Africa Occidentale" },
+
+    ];
+	
     // --- ELEMENTI UI PRINCIPALI ---
     // Riferimenti agli elementi DOM per una facile manipolazione.
     const alertPlaceholder = document.getElementById('alert-placeholder');
@@ -72,7 +85,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const initialOverlayMessage = document.getElementById('initial-overlay-message');
     const initialOverlaySpinner = document.getElementById('initial-overlay-spinner');
 
-    // Elementi per visualizzare lo stato attuale dell'orologio
     const refreshStatusBtn = document.getElementById('refresh-status-btn');
     const currentClockTimeEl = document.getElementById('current-clock-time');
     const currentFormat12hEl = document.getElementById('current-format12h');
@@ -81,30 +93,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentClockTimezoneEl = document.getElementById('current-clock-timezone');
     const lastStatusTimestampEl = document.getElementById('last-status-timestamp');
 
-    // Elementi del form di configurazione
     const configForm = document.getElementById('config-form');
     const format12hSwitch = document.getElementById('format12h');
     const alwaysOnSwitch = document.getElementById('alwaysOn');
-    const timezoneInput = document.getElementById('timezone'); // Ora è un <select>
+    const timezoneInput = document.getElementById('timezone');
     const serviceCommandRadios = document.querySelectorAll('input[name="serviceCommand"]');
     const submitConfigBtn = configForm ? configForm.querySelector('button[type="submit"]') : null;
 
-    // Modale di conferma per l'invio della configurazione
     const confirmSubmitModalEl = document.getElementById('confirmSubmitModal');
     let confirmSubmitModal = confirmSubmitModalEl ? new bootstrap.Modal(confirmSubmitModalEl) : null;
     const modalDynamicMessageArea = document.getElementById('modal-dynamic-message-area');
     const proceedWithSubmitBtn = document.getElementById('proceedWithSubmitBtn');
-    const modalCloseButton = document.getElementById('modalCloseButton'); // Bottone 'X' del modale
-    const cancelSubmitBtn = document.getElementById('cancelSubmitBtn');   // Bottone 'Annulla' del modale
+    const modalCloseButton = document.getElementById('modalCloseButton');
+    const cancelSubmitBtn = document.getElementById('cancelSubmitBtn');
 
-    // Elementi per la funzionalità di Reset WiFi
     const resetWifiCredentialsBtn = document.getElementById('resetWifiCredentialsBtn');
     const confirmResetWifiModalEl = document.getElementById('confirmResetWifiModal');
     let confirmResetWifiModal = confirmResetWifiModalEl ? new bootstrap.Modal(confirmResetWifiModalEl) : null;
     const proceedWithWifiResetBtn = document.getElementById('proceedWithWifiResetBtn');
-    const cancelResetWifiBtn = document.getElementById('cancelResetWifiBtn'); // Bottone 'Annulla' del modale reset WiFi
-    const closeResetWifiModalBtn = document.getElementById('closeResetWifiModalBtn'); // Bottone 'X' del modale reset WiFi
-
+    const cancelResetWifiBtn = document.getElementById('cancelResetWifiBtn');
+    const closeResetWifiModalBtn = document.getElementById('closeResetWifiModalBtn');
 
     if (document.getElementById('current-year')) {
         document.getElementById('current-year').textContent = new Date().getFullYear();
@@ -112,12 +120,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ******************************************************
 // GRUPPO: FUNZIONI DI COMUNICAZIONE CON IL BACKEND (API LAYER)
-// Questo gruppo contiene tutte le funzioni che si occupano esclusivamente di parlare con il server Netlify. È il "livello API" della tua webapp.
+// Questo gruppo astrae tutta la comunicazione di rete. Le altre parti dell'app
+// non devono sapere come avviene la comunicazione, ma solo chiamare queste funzioni.
 // ******************************************************
 
+    /**
+     * Invia un comando generico al backend serverless.
+     * Questa è l'unica funzione usata per mandare dati VERSO l'orologio.
+     * @param {string} command - Il nome del comando (es. 'GET_STATE', 'SET_CONFIG').
+     * @param {object} payload - Un oggetto JSON con i dati aggiuntivi per il comando.
+     * @returns {Promise<boolean>} - True se il server ha accettato il comando (HTTP 200), false altrimenti.
+     */
 	async function sendCommandToServer(command, payload = {}) {
-		
-		
 		if (!sessionId) {
 			showAlert("Errore: ID di sessione non valido.", 'danger');
 			return false;
@@ -131,23 +145,22 @@ document.addEventListener('DOMContentLoaded', () => {
 			});
 			return response.ok;
 		} catch (error) {
-			showAlert(`Errore di comunicazione: ${error.message}`, 'danger');
+			showAlert(`Errore di comunicazione di rete: ${error.message}`, 'danger');
 			return false;
 		}
-		
 	}
 	
-	
-	
-
+    /**
+     * Avvia un ciclo di Long Polling per ricevere risposte/eventi dall'orologio.
+     * Questa funzione rimane attiva in background per tutta la durata della sessione,
+     * mantenendo un canale di comunicazione aperto DALL'orologio VERSO la webapp.
+     */
 	async function startPollingForResponses() {
-		
-		
 		if (responsePollController) responsePollController.abort();
 		responsePollController = new AbortController();
 		const signal = responsePollController.signal;
 
-		console.log("Starting to poll for device responses...");
+		console.log("Inizio polling per le risposte del dispositivo...");
 
 		while (!signal.aborted) {
 			try {
@@ -157,153 +170,112 @@ document.addEventListener('DOMContentLoaded', () => {
 				if (response.status === 200) {
 					const data = await response.json();
 					if (data.type === 'STATE_UPDATE') {
-						console.log("Received state update from device:", data.payload);
-						handleClockData(data.payload); // handleClockData è la tua funzione originale!
+						console.log("Ricevuto aggiornamento di stato dal dispositivo:", data.payload);
+						handleClockData(data.payload);
 					} else if (data.type === 'ACK') {
-						console.log("Received ACK from device for command:", data.command);
+						console.log("Ricevuto ACK dal dispositivo per il comando:", data.command);
 						showAlert(`Comando confermato con successo dall'orologio!`, 'success');
 					} else if (data.type === 'NACK') {
-						 showAlert(`L'orologio ha risposto con un errore (NACK).`, 'warning');
+						 showAlert(`L'orologio ha risposto con un errore (NACK). Controllare i log del dispositivo.`, 'warning');
 					}
 				} else if (response.status !== 204) {
-					throw new Error(`Stato server: ${response.status}`);
+					throw new Error(`Stato server inatteso: ${response.status}`);
 				}
 			} catch (error) {
 				if (!signal.aborted) {
 					setAppState(APP_STATES.ERROR);
-					showAlert("Connessione con l'orologio interrotta.", 'danger');
+					showAlert("Connessione con l'orologio interrotta. Ricaricare la pagina.", 'danger');
 					responsePollController.abort();
 				}
 			}
 		}
-		
 	}	
 		
-
-
-
-
 // ******************************************************
 // GRUPPO: FUNZIONI DI GESTIONE DELLA UI (UI LAYER)
-// Questo gruppo contiene le funzioni che manipolano direttamente il DOM, mostrando o nascondendo elementi, aggiornando testo e valori.
+// Questo gruppo contiene le funzioni che manipolano direttamente il DOM.
 // ******************************************************
   
-    // Questa funzione chiama il nostro nuovo server Netlify, ottiene l'ora
-    // e la restituisce. Gestisce anche gli errori.
+    /**
+     * Contatta il backend per ottenere l'ora corrente precisa per un dato timezone.
+     * Usato per sincronizzare l'ora prima di inviare una nuova configurazione.
+     * @param {string} timezone - Il timezone desiderato (es. "Europe/Rome").
+     * @returns {Promise<string|null>} - La stringa datetime o null in caso di errore.
+     */
     async function fetchCurrentTimeFromServer(timezone) {
-		
-		
-        // Usa il percorso relativo che funzionerà sia in locale (netlify dev) che in produzione.
         const serverUrl = `/.netlify/functions/getTime?tz=${encodeURIComponent(timezone)}`;
         console.log(`Richiesta ora corrente al server Netlify per timezone: ${timezone}`);
-
         try {
-            const response = await fetch(serverUrl, { signal: AbortSignal.timeout(8000) }); // Timeout 8s
+            const response = await fetch(serverUrl, { signal: AbortSignal.timeout(8000) }); 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.message || 'Errore sconosciuto dal server ora.');
+                throw new Error(errorData.message || 'Errore sconosciuto dal server dell\'ora.');
             }
             const timeData = await response.json();
             if (timeData.success) {
-                return timeData.datetime; // Restituisce solo la stringa "YYYY-MM-DD HH:MM:SS"
+                return timeData.datetime;
             } else {
                 throw new Error(timeData.message || 'Il server ha restituito un errore.');
             }
         } catch (error) {
-            console.error("Errore nel fetch dell'ora dal server Netlify:", error);
+            console.error("Errore nel fetch dell'ora:", error);
             showAlert(`Impossibile sincronizzare l'ora dal server: ${error.message}`, 'danger');
-            return null; // Restituisce null in caso di fallimento
+            return null;
         }
-		
     }
-
-   	
 	
-	
-    // --- GESTIONE STATI UI ---
-    // Aggiorna l'interfaccia utente in base allo stato corrente dell'applicazione.
+    /**
+     * Funzione centrale per gestire lo stato visuale dell'applicazione.
+     * Abilita/disabilita l'intera UI in base allo stato corrente.
+     * @param {string} newState - Il nuovo stato da applicare (da APP_STATES).
+     */
 	function setAppState(newState) {
-		
-		
-		console.log("App state changing from:", currentAppState, "to:", newState);
-        currentAppState = newState;
+		console.log("Cambio stato app:", currentAppState, "->", newState);
+		currentAppState = newState;
 
-		// Gestione Overlay (per attesa dati iniziali) e Main Content
-		if (newState === APP_STATES.WAITING_FOR_DATA) {
-			if (initialOverlay) initialOverlay.classList.remove('d-none');
-			if (mainContent) mainContent.classList.add('d-none');
-			if (initialOverlayMessage) initialOverlayMessage.textContent = "In attesa di dati dall'orologio...";
-			if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'block';
-		} else { // Per tutti gli altri stati, l'overlay iniziale è nascosto e il contenuto principale è visibile
-			if (initialOverlay) initialOverlay.classList.add('d-none');
-			if (mainContent) mainContent.classList.remove('d-none');
+		const isInitializing = newState === APP_STATES.INITIALIZING;
+		const isError = newState === APP_STATES.ERROR;
+
+		if (initialOverlay) initialOverlay.classList.toggle('d-none', !isInitializing && !isError);
+		if (mainContent) mainContent.classList.toggle('d-none', isInitializing || isError);
+
+		const isConfigurable = newState === APP_STATES.CONFIGURING;
+		if (configForm) {
+			Array.from(configForm.elements).forEach(el => el.disabled = !isConfigurable);
 		}
-
-		// Abilitazione/Disabilitazione Pulsanti Principali
-        // I pulsanti sono attivi solo nello stato CONFIGURING.
-		const buttonsShouldBeEnabled = (newState === APP_STATES.CONFIGURING);
-		if (submitConfigBtn) submitConfigBtn.disabled = !buttonsShouldBeEnabled;
-		if (refreshStatusBtn) refreshStatusBtn.disabled = !buttonsShouldBeEnabled;
-		if (resetWifiCredentialsBtn) resetWifiCredentialsBtn.disabled = !buttonsShouldBeEnabled;
-
-		// Gestione Spinner per pulsanti specifici in base allo stato
-		if (submitConfigBtn) {
-			showButtonSpinner(submitConfigBtn, newState === APP_STATES.SENDING_CONFIG, "Invio...");
-		}
-        // Lo spinner per proceedWithWifiResetBtn è gestito direttamente nella sua logica.
-		
-        // Gestione Modali
-		if (newState === APP_STATES.CONFIRMING_SUBMIT) {
-			if (confirmSubmitModal) confirmSubmitModal.show();
-		} else if (newState === APP_STATES.CONFIRMING_WIFI_RESET) {
-            if (confirmResetWifiModal) confirmResetWifiModal.show();
-        }
+		if (refreshStatusBtn) refreshStatusBtn.disabled = !isConfigurable;
+		if (resetWifiCredentialsBtn) resetWifiCredentialsBtn.disabled = !isConfigurable;
 	}
-
-    // --- LOGICA COMANDI DI SERVIZIO (allIN, allOUT, TimeMode) ---
-    // Abilita il pulsante di invio se un comando di servizio viene selezionato (e siamo in stato CONFIGURING).
-    if (serviceCommandRadios) {
-        serviceCommandRadios.forEach(radio => radio.addEventListener('change', () => {
-            if (submitConfigBtn && currentAppState === APP_STATES.CONFIGURING) {
-                submitConfigBtn.disabled = false; // Normalmente non necessario se setAppState lo gestisce, ma per sicurezza.
-            }
-        }));
 		
-    }
-
-
-
-
-    // Mostra/Nasconde uno spinner su un pulsante e ne disabilita/abilita l'interazione.
+    /**
+     * Gestisce la visualizzazione di uno spinner su un pulsante per dare feedback visivo
+     * durante un'operazione asincrona.
+     * @param {HTMLElement} buttonElement - L'elemento bottone.
+     * @param {boolean} show - True per mostrare lo spinner, false per nasconderlo.
+     * @param {string} spinnerText - Il testo da mostrare accanto allo spinner.
+     */
     function showButtonSpinner(buttonElement, show = true, spinnerText = "Attendere...") {
-		
-		
         if (!buttonElement) return;
         if (show) {
-            if (!buttonElement.dataset.originalContent) { // Salva il contenuto originale solo la prima volta
+            if (!buttonElement.dataset.originalContent) {
                 buttonElement.dataset.originalContent = buttonElement.innerHTML;
             }
             buttonElement.disabled = true;
             buttonElement.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${spinnerText}`;
         } else {
             buttonElement.disabled = false;
-            if (buttonElement.dataset.originalContent) { // Ripristina il contenuto originale
+            if (buttonElement.dataset.originalContent) {
                 buttonElement.innerHTML = buttonElement.dataset.originalContent;
             }
-            // Non è necessario resettare buttonElement.dataset.originalContent, può essere riutilizzato
         }
-		
     }
     
-	
-
-
-    // --- FUNZIONE PER POPOLARE IL SELECT DEI TIMEZONE ---
+    /**
+     * Popola il menu a tendina (<select>) dei timezone.
+     */
     function populateTimezoneSelect() {
-
-		
         if (timezoneInput && timezoneInput.tagName === 'SELECT') {
-            timezoneInput.innerHTML = ''; // Pulisci opzioni esistenti
+            timezoneInput.innerHTML = '';
             timezonesForSelect.forEach(tz => {
                 const option = document.createElement('option');
                 option.value = tz.value;
@@ -311,23 +283,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 timezoneInput.appendChild(option);
             });
             console.log("Select dei timezone popolato.");
-        } else if (timezoneInput) {
-            console.warn("L'elemento con id='timezone' NON è un tag SELECT come atteso. Impossibile popolare l'elenco.");
-        } else {
-            console.warn("Elemento con id='timezone' NON TROVATO. Impossibile popolare l'elenco dei timezone.");
         }
-		
     }
 
-
-	
-
-    // --- FUNZIONI PER POPOLARE I CAMPI ---
-    // Popola i campi di visualizzazione dello stato dell'orologio.
+    /**
+     * Aggiorna i campi di testo della sezione "Stato Attuale" con i dati ricevuti.
+     * @param {object|null} statusData - L'oggetto con lo stato o null per pulire i campi.
+     */
     function populateStatusFields(statusData) {
-		
-		
-        lastReceivedClockStatus = statusData; // Aggiorna lo stato globale
+        lastReceivedClockStatus = statusData;
         if (statusData) {
             if(currentClockTimeEl) currentClockTimeEl.textContent = formatDateTimeForDisplay(statusData.datetime);
             if(currentFormat12hEl) currentFormat12hEl.textContent = statusData.format12h ? '12 Ore (AM/PM)' : '24 Ore';
@@ -339,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 else currentOpModeEl.textContent = 'Time Mode';
             }
             if(lastStatusTimestampEl) lastStatusTimestampEl.textContent = new Date().toLocaleString('it-IT') + " (dati ricevuti ora)";
-        } else { // Se non ci sono dati, mostra "N/D"
+        } else {
             if(currentClockTimeEl) currentClockTimeEl.textContent = "N/D";
             if(currentFormat12hEl) currentFormat12hEl.textContent = "N/D";
             if(currentAlwaysOnEl) currentAlwaysOnEl.textContent = "N/D";
@@ -347,58 +311,46 @@ document.addEventListener('DOMContentLoaded', () => {
             if(currentClockTimezoneEl) currentClockTimezoneEl.textContent = "N/D";
             if(lastStatusTimestampEl) lastStatusTimestampEl.textContent = 'Mai';
         }
-		
     }
 
-
-
-
-    // Popola i campi del form di configurazione con i dati correnti o default.
+    /**
+     * Aggiorna i valori del form di configurazione (switch, select, radio) in base ai dati ricevuti.
+     * @param {object|null} statusData - L'oggetto con lo stato o null per impostare i default.
+     */
     function populateFormFields(statusData) {
-		
-		
         if (statusData) {
             if(format12hSwitch) format12hSwitch.checked = !!statusData.format12h;
             if(alwaysOnSwitch) alwaysOnSwitch.checked = !!statusData.alwaysOn;
-            
             if(timezoneInput && timezoneInput.tagName === 'SELECT') {
-                timezoneInput.value = statusData.timezone || "Europe/Rome"; // Default se non presente
-                // Verifica se il timezone ricevuto è valido e presente nella lista
+                timezoneInput.value = statusData.timezone || "Europe/Rome";
                 if (!timezonesForSelect.some(tz => tz.value === timezoneInput.value)) {
-                    console.warn(`Timezone "${statusData.timezone}" ricevuto non trovato nell'elenco. Imposto default "Europe/Rome".`);
+                    console.warn(`Timezone "${statusData.timezone}" non trovato nell'elenco. Imposto default "Europe/Rome".`);
                     timezoneInput.value = "Europe/Rome"; 
                 }
-            } else if (timezoneInput) { // Fallback se timezoneInput non è un select (improbabile con HTML corretto)
-                timezoneInput.value = statusData.timezone || "Europe/Rome";
             }
-
-            // Imposta il radio button del comando di servizio
             const cmdAllIN = document.getElementById('cmd-allIN');
             const cmdAllOUT = document.getElementById('cmd-allOUT');
-            const cmdTimeMode = document.getElementById('cmd-timeMode') || document.getElementById('cmd-none'); // 'cmd-none' come fallback
-
+            const cmdTimeMode = document.getElementById('cmd-timeMode') || document.getElementById('cmd-none');
             if (statusData.allIN === true && cmdAllIN) cmdAllIN.checked = true;
             else if (statusData.allOUT === true && cmdAllOUT) cmdAllOUT.checked = true;
-            else if (cmdTimeMode) cmdTimeMode.checked = true; // Default a TimeMode se non allIN/allOUT
-        } else { // Valori di default per il form se non ci sono dati di stato
+            else if (cmdTimeMode) cmdTimeMode.checked = true;
+        } else {
             if(format12hSwitch) format12hSwitch.checked = false;
             if(alwaysOnSwitch) alwaysOnSwitch.checked = false;
-            if(timezoneInput) timezoneInput.value = "Europe/Rome"; // Default timezone
+            if(timezoneInput) timezoneInput.value = "Europe/Rome";
             const cmdTimeMode = document.getElementById('cmd-timeMode') || document.getElementById('cmd-none');
-            if(cmdTimeMode) cmdTimeMode.checked = true; // Default a TimeMode
+            if(cmdTimeMode) cmdTimeMode.checked = true;
         }
-        // Lo stato del submitConfigBtn è già gestito da setAppState
     }
 
-
-
-
-
-
-    // Mostra un alert Bootstrap dinamico.
+    /**
+     * Mostra un alert Bootstrap dinamico nell'apposito placeholder.
+     * @param {string} message - Il messaggio da visualizzare.
+     * @param {string} type - Il tipo di alert (es. 'success', 'danger', 'info').
+     * @param {number} duration - La durata in ms prima che l'alert scompaia.
+     * @param {boolean} dismissible - Se l'utente può chiudere l'alert.
+     */
     function showAlert(message, type = 'info', duration = 7000, dismissible = true) {
-		
-		
         if (!alertPlaceholder) return;
         const wrapper = document.createElement('div');
         wrapper.innerHTML = [
@@ -409,109 +361,76 @@ document.addEventListener('DOMContentLoaded', () => {
             '</div>'
         ].join('');
         alertPlaceholder.append(wrapper);
-        if (duration && dismissible) { // Solo se dismissible e con durata, altrimenti l'utente chiude manualmente
+        if (duration && dismissible) {
             setTimeout(() => {
                 if (wrapper.parentNode) {
                     wrapper.remove();
                 }
             }, duration);
         }
-		
     }
 
-
-
-
-	
-	
-    // Formatta una stringa datetime per la visualizzazione.
+    /**
+     * Formatta una stringa datetime dal formato "YYYY-MM-DD HH:MM:SS" a un formato più leggibile.
+     * @param {string} dateTimeString - La stringa da formattare.
+     * @returns {string} - La stringa formattata o un messaggio di errore/default.
+     */
     function formatDateTimeForDisplay(dateTimeString) {
-		
-		
         if (!dateTimeString || dateTimeString === "0000-00-00 00:00:00") return "N/D (ora non impostata/sincronizzata)";
         try {
             const [datePart, timePart] = dateTimeString.split(' ');
-            if (!datePart || !timePart) return dateTimeString; // Formato non atteso
+            if (!datePart || !timePart) return dateTimeString;
             const [year, month, day] = datePart.split('-');
             if (parseInt(year,10) < 2023 && datePart !== "0000-00-00") return "N/D (segnale orologio anomalo)";
             return `${timePart} (${day}/${month}/${year})`;
         } catch (e) { 
             console.warn("Errore formattazione datetime:", dateTimeString, e);
-            return dateTimeString; // Restituisce la stringa originale in caso di errore
+            return dateTimeString;
         }
-		
     }
 
-
-
-
-
 // ******************************************************
-// GRUPPO: FUNZIONI DI LOGICA APPLICATIVA (BUSINESS LOGIC LAYER)
-// Questo gruppo contiene le funzioni che orchestrano la logica principale dell'applicazione, collegando gli eventi della UI con la comunicazione backend e la gestione dello stato.
+// GRUPPO: FUNZIONI DI LOGICA APPLICATIVA (BUSINESS LOGIC)
+// Questo gruppo orchestra il flusso principale dell'applicazione.
 // ******************************************************
 
-    // --- GESTIONE DATI DA ESP32 (RICEVUTI VIA URL PARAM O FETCH) ---
-    // Verifica che i dati ricevuti siano validi.
-	// Crea un oggetto lastReceivedClockStatus pulito, senza più l'inutile esp32_reply_to_endpoint.
-	// Usa le tue funzioni populateStatusFields e populateFormFields per aggiornare la UI.
-	// Controlla se l'app era nello stato WAITING_FOR_STATE. Se sì, significa che questo è il primo stato ricevuto con successo, 
-	// quindi mostra un messaggio di successo e sblocca l'UI impostando lo stato a CONFIGURING. Se no, aggiorna semplicemente i dati senza cambiare lo stato generale dell'app.
-	function handleClockData(data) {
-		
-		console.log("Received data from ESP32 (via server):", data);
-
-		// La verifica di validità dei dati rimane la stessa
+    /**
+     * Funzione chiave che processa i dati di stato ricevuti dall'orologio.
+     * Aggiorna la UI e, se è la prima ricezione, sblocca l'applicazione.
+     * @param {object} data - L'oggetto JSON con lo stato dell'orologio.
+     */
+ 	function handleClockData(data) {
+		console.log("Processo i dati di stato ricevuti:", data);
 		if (data && data.datetime !== undefined) { 
-			
-			// Normalizza e salva i dati ricevuti.
-			// La proprietà 'esp32_reply_to_endpoint' è stata rimossa perché non è più necessaria.
 			lastReceivedClockStatus = {
 				datetime: data.datetime,
-				format12h: !!data.format12h, // Converte a booleano
-				alwaysOn: !!data.alwaysOn,   // Converte a booleano
-				allIN: !!data.allIN,         // Converte a booleano
-				allOUT: !!data.allOUT,       // Converte a booleano
-				timezone: data.timezone || "Europe/Rome" // Default se timezone non presente
+				format12h: !!data.format12h,
+				alwaysOn: !!data.alwaysOn,
+				allIN: !!data.allIN,
+				allOUT: !!data.allOUT,
+				timezone: data.timezone || "Europe/Rome"
 			};
-
-			// Aggiorna i campi dell'interfaccia utente con i nuovi dati.
-			// Queste sono le tue funzioni originali, che vanno bene.
 			populateStatusFields(lastReceivedClockStatus);
 			populateFormFields(lastReceivedClockStatus);
-
-			// Controlla lo stato attuale dell'app per decidere come procedere.
-			// Se stavamo aspettando i dati iniziali, ora possiamo sbloccare l'interfaccia.
-			if (currentAppState === APP_STATES.WAITING_FOR_STATE) {
-				showAlert('Stato dell\'orologio caricato con successo.', 'success', 5000);
-				setAppState(APP_STATES.CONFIGURING); // Transizione allo stato di configurazione.
+			if (currentAppState === APP_STATES.INITIALIZING) {
+				showAlert('Stato dell\'orologio caricato. Pronto per la configurazione.', 'success');
+				setAppState(APP_STATES.CONFIGURING);
 			}
-			
 		} else {
-			// La gestione dell'errore se i dati non sono validi rimane la stessa.
-			showAlert("Dati ricevuti dall'orologio non validi o incompleti.", 'warning', 10000);
-			populateStatusFields(null); // Pulisce i campi di stato
-			populateFormFields(null);   // Pulisce i campi del form
-
-			// Se eravamo in attesa e falliamo, andiamo in stato di errore.
-			if(currentAppState === APP_STATES.WAITING_FOR_STATE) {
+			showAlert("Dati ricevuti dall'orologio non validi o incompleti.", 'warning');
+			if (currentAppState === APP_STATES.INITIALIZING) {
 				 setAppState(APP_STATES.ERROR);
+				 if (initialOverlayMessage) initialOverlayMessage.textContent = "Impossibile caricare lo stato iniziale dall'orologio.";
 			}
 		}
 	}
-
    
-   
- 
-   
-   
-   
-    // --- LOGICA DI AVVIO DELL'APPLICAZIONE ---
-    // Carica lo stato iniziale dai parametri dell'URL (metodo per produzione quando la WebApp è hostata esternamente).
+    /**
+     * Punto di ingresso dell'applicazione.
+     * Controlla il sessionId, imposta lo stato iniziale e avvia la comunicazione.
+     */
     function initializeApp() {
-		
-		
-		populateTimezoneSelect(); // Questa è la tua funzione originale, va bene
+		populateTimezoneSelect();
 		const urlParams = new URLSearchParams(window.location.search);
 		sessionId = urlParams.get('session_id');
 
@@ -524,139 +443,80 @@ document.addEventListener('DOMContentLoaded', () => {
 			return;
 		}
 
-		console.log("App initialized with session ID:", sessionId);
-		setAppState(APP_STATES.WAITING_FOR_STATE);
+		console.log("App inizializzata con ID di sessione:", sessionId);
+		setAppState(APP_STATES.INITIALIZING);
 		if (initialOverlayMessage) initialOverlayMessage.textContent = "In attesa dello stato dall'orologio...";
 		
-		// Richiedi lo stato iniziale inviando un comando al server
 		sendCommandToServer('GET_STATE');
-		
-		// E inizia subito ad ascoltare le risposte
 		startPollingForResponses();
-		
 	}
-
-
-
-
 
 // ******************************************************
 // GRUPPO: EVENT LISTENERS
-// Questo blocco, solitamente alla fine del file, contiene tutto il codice che attacca gli handler agli eventi del DOM (click, submit, ecc.).
+// Questo blocco collega le funzioni definite sopra agli eventi del browser (click, submit, etc.).
 // ******************************************************
 
-
-    // Event listener per il caricamento della pagina: punto di ingresso principale.
-	window.addEventListener('load', () => {
-		console.log("Window loaded. Initializing app...");
+    window.addEventListener('load', () => {
+		console.log("Finestra caricata. Avvio dell'app...");
 		initializeApp();
 	});
 
-
-
-
-    // --- GESTIONE INVIO CONFIGURAZIONE (SUBMIT DEL FORM) ---
     if(configForm) {
         configForm.addEventListener('submit', (event) => {
-            event.preventDefault(); // Impedisce l'invio standard del form
+            event.preventDefault();
             if (currentAppState !== APP_STATES.CONFIGURING) {
-                showAlert("Attendere il completamento dell'operazione corrente o il caricamento dello stato.", "warning");
+                showAlert("Attendere il completamento dell'operazione corrente.", "warning");
                 return;
             }
-            // Prepara il messaggio per il modale di conferma
-            let modalMessages = `<p>Stai per inviare la seguente configurazione all'orologio. Assicurati che sia in modalità 'Setup' e connesso alla tua rete WiFi.</p>
-                                 <p class="text-info-emphasis"><i class="bi bi-info-circle-fill me-1"></i>Verrà sincronizzata anche l'ora corrente per il timezone selezionato.</p>`;
+            let modalMessages = `<p>Stai per inviare la seguente configurazione. Verrà sincronizzata anche l'ora corrente per il timezone selezionato.</p>`;
             if(modalDynamicMessageArea) modalDynamicMessageArea.innerHTML = modalMessages;
-            setAppState(APP_STATES.CONFIRMING_SUBMIT);
+            if (confirmSubmitModal) confirmSubmitModal.show();
         });
-		
     }
 
-
-
-
-	//  L'utente preme "Invia", la UI si blocca, riceve subito un messaggio "Comando inviato. In attesa di conferma...". 
-	// Poi, qualche secondo dopo (il tempo che l'ESP32 faccia il polling, esegua il comando e invii la risposta), 
-	// riceverà un secondo alert "Comando confermato con successo!" generato dalla funzione startPollingForResponses.
 	if (proceedWithSubmitBtn) {
 		proceedWithSubmitBtn.addEventListener('click', async () => {
-			// Controllo di sicurezza, rimane invariato
-			if (currentAppState !== APP_STATES.CONFIRMING_SUBMIT) return;
-
-			// Imposta lo stato di invio e nasconde il modale
-			setAppState(APP_STATES.SENDING_COMMAND);
 			if (confirmSubmitModal) confirmSubmitModal.hide();
+			showButtonSpinner(submitConfigBtn, true, "Invio...");
 
-			// 1. La logica per ottenere l'ora corrente dal server Netlify rimane IDENTICA.
-			//    È una buona pratica perché garantisce che l'ora inviata sia sempre precisa.
 			const selectedTimezone = timezoneInput.value;
-			showAlert(`Sincronizzazione ora per ${selectedTimezone}...`, 'info', 4000);
 			const currentDateTime = await fetchCurrentTimeFromServer(selectedTimezone);
 			
-			// Se il sync dell'ora fallisce, annulliamo l'operazione. Invariato.
 			if (currentDateTime === null) {
-				showAlert("Invio configurazione annullato: impossibile sincronizzare l'ora.", "warning");
-				setAppState(APP_STATES.CONFIGURING);
+				showAlert("Invio annullato: impossibile sincronizzare l'ora.", "warning");
+				showButtonSpinner(submitConfigBtn, false);
 				return;
 			}
 
-			showAlert("Ora sincronizzata. Invio della nuova configurazione all'orologio...", 'info', 5000);
-
-			// 2. La costruzione del payload JSON rimane IDENTICA.
 			const selectedServiceCommandRadio = document.querySelector('input[name="serviceCommand"]:checked');
-			const selectedServiceCommandValue = selectedServiceCommandRadio ? selectedServiceCommandRadio.value : 'none';
-			
 			const payload = {
 				datetime: currentDateTime,
 				format12h: format12hSwitch.checked,
 				alwaysOn: alwaysOnSwitch.checked,
 				timezone: selectedTimezone,
-				allIN: (selectedServiceCommandValue === 'allIN'),
-				allOUT: (selectedServiceCommandValue === 'allOUT')
+				allIN: (selectedServiceCommandRadio.value === 'allIN'),
+				allOUT: (selectedServiceCommandRadio.value === 'allOUT')
 			};
 
-			// 3. SOSTITUZIONE DELLA LOGICA DI INVIO.
-			//    Tutta la vecchia logica 'try/catch' con 'fetch' diretto viene sostituita
-			//    da una singola chiamata alla nostra nuova funzione helper.
 			const success = await sendCommandToServer('SET_CONFIG', payload);
 
-			// 4. GESTIONE DEL RISULTATO (ASINCRONO)
 			if (success) {
-				// Messaggio per l'utente: il comando è stato ACCETTATO dal server, non ancora
-				// eseguito dall'orologio. La conferma arriverà tramite il polling.
-				showAlert("Comando inviato correttamente. In attesa di conferma dall'orologio...", "info", 8000);
+				showAlert("Comando di configurazione inviato. Clicca 'Aggiorna Stato' per vedere le modifiche.", "info");
 			} else {
-				// Se 'sendCommandToServer' fallisce, significa che c'è stato un problema
-				// di comunicazione con il server Netlify.
-				showAlert("Errore: impossibile inviare il comando al server. Controlla la tua connessione internet.", "danger");
+				showAlert("Errore: impossibile inviare il comando al server.", "danger");
 			}
 			
-			// 5. GESTIONE DELLO STATO UI
-			// Non torniamo immediatamente allo stato 'CONFIGURING'. 
-			// L'UI rimarrà "bloccata" (pulsanti disabilitati) finché non arriva una risposta
-			// o scatta un timeout, per evitare che l'utente invii comandi multipli.
-			// Aggiungiamo un timeout di sicurezza per sbloccare la UI se non arriva mai una risposta.
-			setTimeout(() => {
-				if (currentAppState === APP_STATES.SENDING_COMMAND) {
-					console.warn("Nessuna conferma ricevuta dall'orologio. Sblocco della UI per timeout.");
-					setAppState(APP_STATES.CONFIGURING);
-				}
-			}, 15000); // Sblocca la UI dopo 15 secondi se non è successo nulla
+			showButtonSpinner(submitConfigBtn, false);
 		});
 	}
 
-
-
-
-    // --- Pulsante Aggiorna Stato ---
-    // invia un comando al server invece di contattare direttamente l'ESP32.
     if (refreshStatusBtn) {
 		refreshStatusBtn.addEventListener('click', async () => {
 			if (currentAppState !== APP_STATES.CONFIGURING) {
-				showAlert("Attendere il completamento dell'operazione corrente.", "warning");
-				return;
-			}
-			console.log("Refresh status button clicked");
+                showAlert("Attendere il completamento dell'operazione corrente.", "warning");
+                return;
+            }
+			console.log("Click su Aggiorna Stato");
 			showButtonSpinner(refreshStatusBtn, true, "Richiedo...");
 
 			const success = await sendCommandToServer('GET_STATE');
@@ -667,49 +527,28 @@ document.addEventListener('DOMContentLoaded', () => {
 				showAlert("Impossibile inviare la richiesta di stato al server.", "danger");
 			}
 
-			// Lo spinner verrà rimosso automaticamente quando lo stato cambia
-			// o dopo un timeout per sicurezza.
-			setTimeout(() => showButtonSpinner(refreshStatusBtn, false), 5000);
+			setTimeout(() => showButtonSpinner(refreshStatusBtn, false), 8000);
 		});
 	}
 
-
-
-
-    // --- GESTIONE RESET WIFI ---
-    // Apre il modale di conferma per il reset delle credenziali WiFi.
     if (resetWifiCredentialsBtn) {
         resetWifiCredentialsBtn.addEventListener('click', () => {
             if (currentAppState !== APP_STATES.CONFIGURING) {
-                showAlert("Attendi il completamento di altre operazioni o il caricamento dello stato prima di resettare il WiFi.", "warning");
+                showAlert("Attendi il completamento di altre operazioni prima di resettare il WiFi.", "warning");
                 return;
             }
-            // Resetta lo stato del pulsante del modale (rimuovi spinner se presente da un tentativo precedente)
-            showButtonSpinner(proceedWithWifiResetBtn, false); // Assicura che il pulsante nel modale sia normale
-            setAppState(APP_STATES.CONFIRMING_WIFI_RESET); // Mostra il modale di conferma reset WiFi
+            showButtonSpinner(proceedWithWifiResetBtn, false);
+            if(confirmResetWifiModal) confirmResetWifiModal.show();
         });
-		
     }
 
-
-
-
-
-	// --- Azione quando l'utente conferma il reset WiFi dal modale ---
 	if (proceedWithWifiResetBtn) {
 		proceedWithWifiResetBtn.addEventListener('click', async () => {
-			if (currentAppState !== APP_STATES.CONFIRMING_WIFI_RESET) return;
-
-			setAppState(APP_STATES.SENDING_COMMAND); // Usa uno stato generico di invio
 			showButtonSpinner(proceedWithWifiResetBtn, true, "Invio...");
-			
 			const success = await sendCommandToServer('RESET_WIFI');
-
 			if (confirmResetWifiModal) confirmResetWifiModal.hide();
 			
 			if (success) {
-				// Poiché il reset del WiFi fa riavviare l'ESP32, non riceveremo mai un ACK.
-				// Quindi, mostriamo subito il messaggio di successo e istruzioni all'utente.
 				showAlert(
 					"<strong>Comando di reset WiFi inviato!</strong><br>" +
 					"materialTime si riavvierà in modalità Access Point (AP). " +
@@ -717,16 +556,14 @@ document.addEventListener('DOMContentLoaded', () => {
 					'success', 60000, false
 				);
 
-				// Ferma il polling e resetta l'UI perché la sessione è terminata
 				if (responsePollController) responsePollController.abort();
 				sessionId = null;
 				lastReceivedClockStatus = null;
 				populateStatusFields(null);
 				populateFormFields(null);
 				setAppState(APP_STATES.ERROR);
-				if(initialOverlayMessage) initialOverlayMessage.textContent = "Sessione terminata. Riconfigura l'orologio e accedi di nuovo tramite il suo redirect.";
+				if(initialOverlayMessage) initialOverlayMessage.textContent = "Sessione terminata. Riconfigura l'orologio e accedi di nuovo.";
 				if(initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
-
 			} else {
 				showAlert("Errore: impossibile inviare il comando di reset al server.", "danger");
 				setAppState(APP_STATES.CONFIGURING);
@@ -736,35 +573,23 @@ document.addEventListener('DOMContentLoaded', () => {
 		});
 	}
 
-
-
-
-    // --- GESTIONE CHIUSURA MODALI ---
-    // Gestori per i pulsanti di chiusura/annulla dei modali e per l'evento 'hidden.bs.modal'.
-
-    // Modale di conferma invio configurazione
     if(modalCloseButton) modalCloseButton.addEventListener('click', () => { if(confirmSubmitModal) confirmSubmitModal.hide(); });
     if(cancelSubmitBtn) cancelSubmitBtn.addEventListener('click', () => { if(confirmSubmitModal) confirmSubmitModal.hide(); });
     if(confirmSubmitModalEl) {
         confirmSubmitModalEl.addEventListener('hidden.bs.modal', () => {
-            // Quando il modale è nascosto, se non stiamo inviando, torna a CONFIGURING.
-            if (currentAppState === APP_STATES.CONFIRMING_SUBMIT) {
-                setAppState(APP_STATES.CONFIGURING);
+            if (currentAppState !== APP_STATES.CONFIGURING) {
+                // Non fa nulla, lo stato verrà gestito da altre logiche
             }
         });
     }
 
-    // Modale di conferma reset WiFi
     if(closeResetWifiModalBtn) closeResetWifiModalBtn.addEventListener('click', () => { if(confirmResetWifiModal) confirmResetWifiModal.hide(); });
     if(cancelResetWifiBtn) cancelResetWifiBtn.addEventListener('click', () => { if(confirmResetWifiModal) confirmResetWifiModal.hide(); });
     if(confirmResetWifiModalEl) {
         confirmResetWifiModalEl.addEventListener('hidden.bs.modal', () => {
-            // Quando il modale è nascosto, se non stiamo inviando il reset, torna a CONFIGURING.
-            if (currentAppState === APP_STATES.CONFIRMING_WIFI_RESET) {
-                setAppState(APP_STATES.CONFIGURING);
+            if (currentAppState !== APP_STATES.CONFIGURING) {
+                // Non fa nulla
             }
         });
     }
-
-    // Inizializzazione UI e stato iniziale già gestita in window.addEventListener('load', ...)
-}); // Fine DOMContentLoaded
+});
