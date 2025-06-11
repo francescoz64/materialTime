@@ -427,19 +427,19 @@ document.addEventListener('DOMContentLoaded', () => {
    
 	/*
      * Punto di ingresso dell'applicazione.
-     * Controlla il sessionId, esegue una prima richiesta per ottenere lo stato iniziale
-     * e poi avvia il ciclo di polling per gli aggiornamenti futuri.
+     * Esegue una singola chiamata sincrona al backend per ottenere lo stato iniziale,
+     * e poi avvia il polling per gli aggiornamenti futuri.
      */
     async function initializeApp() {
+		
+		
         populateTimezoneSelect();
         const urlParams = new URLSearchParams(window.location.search);
         sessionId = urlParams.get('session_id');
 
         if (!sessionId) {
             setAppState(APP_STATES.ERROR);
-            if (initialOverlayMessage) {
-                initialOverlayMessage.textContent = "Errore: ID di sessione non trovato. Accedi tramite il redirect del tuo orologio.";
-            }
+            if (initialOverlayMessage) initialOverlayMessage.textContent = "Errore: ID di sessione non trovato.";
             if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
             return;
         }
@@ -448,43 +448,33 @@ document.addEventListener('DOMContentLoaded', () => {
         setAppState(APP_STATES.INITIALIZING);
         if (initialOverlayMessage) initialOverlayMessage.textContent = "Contatto l'orologio...";
 
-        // --- NUOVA LOGICA DI AVVIO ROBUSTA ---
         try {
-            // 1. Invia il comando per richiedere lo stato.
-            const commandSent = await sendCommandToServer('GET_STATE');
-            if (!commandSent) {
-                throw new Error("Impossibile inviare il comando iniziale al server.");
-            }
+            // Unica chiamata per ottenere lo stato iniziale. Netlify reindirizzerà 
+            // la chiamata a /functions/getInitialState.js se non usi la config con 'path'.
+            const response = await fetch(`/.netlify/functions/getInitialState?session_id=${sessionId}`);
             
-            if (initialOverlayMessage) initialOverlayMessage.textContent = "In attesa della risposta dall'orologio...";
-
-            // 2. Esegui una singola richiesta di polling con un timeout ragionevole (es. 15 secondi)
-            //    per attendere ESCLUSIVAMENTE la prima risposta di stato.
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000); // Timeout di 15 secondi
-
-            const response = await fetch(`/.netlify/functions/pollForResponse?session_id=${sessionId}`, { signal: controller.signal });
-            clearTimeout(timeoutId); // Annulla il timeout se la risposta arriva
-
-            if (response.status === 200) {
-                const data = await response.json();
-                if (data.type === 'STATE_UPDATE') {
-                    // 3. Se riceviamo lo stato, lo processiamo. La funzione handleClockData
-                    //    farà la transizione allo stato CONFIGURING.
-                    handleClockData(data.payload);
-                    
-                    // 4. SOLO ORA, avviamo il ciclo di polling continuo per tutti gli eventi futuri.
-                    startPollingForResponses();
-                } else {
-                    throw new Error("Risposta iniziale inattesa dal dispositivo.");
-                }
-            } else {
-                throw new Error(`Il server ha risposto con uno stato ${response.status} durante la richiesta iniziale.`);
+            if (!response.ok) {
+                // Tentiamo di leggere il corpo come JSON, ma se fallisce,
+                // forniamo un oggetto di errore di default. Questo previene
+                // un crash se il server risponde con HTML o testo semplice.
+                const errorBody = await response.json().catch(() => ({ 
+                    error: "Risposta non-JSON dal server." 
+                }));
+                throw new Error(errorBody.error || `Il server ha risposto con ${response.status}`);
             }
+
+            const initialState = await response.json();
+            
+            // Stato ricevuto, ora possiamo procedere
+            handleClockData(initialState); // Questa funzione sbloccherà l'UI
+            
+            // E ora avviamo il polling per tutte le altre comunicazioni future
+            startPollingForResponses();
+
         } catch (error) {
             console.error("Errore durante l'inizializzazione:", error);
             setAppState(APP_STATES.ERROR);
-            if (initialOverlayMessage) initialOverlayMessage.textContent = `Errore di connessione: ${error.message}. Ricarica la pagina per riprovare.`;
+            if (initialOverlayMessage) initialOverlayMessage.textContent = `Errore di connessione: ${error.message}. Ricarica la pagina.`;
             if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
         }
     }
