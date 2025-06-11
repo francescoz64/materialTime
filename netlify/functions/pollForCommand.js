@@ -1,3 +1,4 @@
+// VERSIONE 2.0 - CON LOG DI DEBUG PER DELETE
 import { getStore } from "@netlify/blobs";
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
