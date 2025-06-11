@@ -9,6 +9,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     
 	let isSubmitting = false; // Variabile di blocco globale
+	let isRefreshing = false;
 	
     // --- STATI APPLICAZIONE ---
     // Definisce i tre stati fondamentali dell'applicazione.
@@ -547,31 +548,38 @@ document.addEventListener('DOMContentLoaded', () => {
 	
 	
 
-    if (refreshStatusBtn) {
-		refreshStatusBtn.addEventListener('click', async () => {
-            // Se il pulsante è già disabilitato, significa che un'operazione è in corso.
-            if (submitConfigBtn.disabled) {
-                console.warn("Submit in corso, ignorato doppio click.");
-                return;
-            }
-			if (currentAppState !== APP_STATES.CONFIGURING) {
-                showAlert("Attendere il completamento dell'operazione corrente.", "warning");
-                return;
-            }
-			console.log("Click su Aggiorna Stato");
-			showButtonSpinner(refreshStatusBtn, true, "Richiedo...");
+	if (refreshStatusBtn) {
+			refreshStatusBtn.addEventListener('click', async () => {
+				// Se un'altra operazione è in corso (il pulsante è già disabilitato), non fare nulla.
+				// Questo controllo è più generico e robusto del solo `isRefreshing`.
+				if (refreshStatusBtn.disabled) {
+					console.warn("Operazione già in corso, ignorato doppio click su Aggiorna.");
+					return;
+				}
 
-			const success = await sendCommandToServer('GET_STATE');
+				// Avvolgiamo tutto in un try...finally per garantire lo sblocco del pulsante.
+				try {
+					showButtonSpinner(refreshStatusBtn, true, "Richiedo...");
+					const success = await sendCommandToServer('GET_STATE');
 
-			if (success) {
-				showAlert("Richiesta di stato inviata. In attesa di risposta...", "info");
-			} else {
-				showAlert("Impossibile inviare la richiesta di stato al server.", "danger");
-			}
+					if (success) {
+						showAlert("Richiesta di stato inviata. In attesa di risposta...", "info");
+					} else {
+						showAlert("Impossibile inviare la richiesta di stato al server.", "danger");
+					}
+				} finally {
+					// Indipendentemente dal successo, sblocchiamo il pulsante dopo un breve ritardo.
+					// Il ritardo è solo per evitare che lo spinner scompaia troppo in fretta,
+					// ma potremmo anche rimuoverlo per la massima reattività.
+					setTimeout(() => {
+						showButtonSpinner(refreshStatusBtn, false);
+						console.log("Pulsante Aggiorna sbloccato.");
+					}, 1000); 
+				}
+			});
+		}
 
-			setTimeout(() => showButtonSpinner(refreshStatusBtn, false), 8000);
-		});
-	}
+
 
     if (resetWifiCredentialsBtn) {
         resetWifiCredentialsBtn.addEventListener('click', () => {
