@@ -427,11 +427,11 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 		}
 	}
+
+
+
    
-	/*
-     * Punto di ingresso dell'applicazione.
-     * Avvia la comunicazione e attende pazientemente la prima risposta di stato.
-     */
+    // Punto di ingresso dell'applicazione: avvia la comunicazione e attende pazientemente la prima risposta di stato.
     async function initializeApp() {
         populateTimezoneSelect();
         const urlParams = new URLSearchParams(window.location.search);
@@ -439,34 +439,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!sessionId) {
             setAppState(APP_STATES.ERROR);
-            if (initialOverlayMessage) initialOverlayMessage.textContent = "Errore: ID di sessione non trovato.";
+            if (initialOverlayMessage) {
+                initialOverlayMessage.textContent = "Errore: ID di sessione non trovato.";
+                // Applichiamo la classe anche qui per coerenza
+                initialOverlayMessage.classList.add('text-readable');
+            }
             if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
             return;
         }
 
         console.log("App inizializzata con ID di sessione:", sessionId);
         setAppState(APP_STATES.INITIALIZING);
-        if (initialOverlayMessage) initialOverlayMessage.textContent = "Contatto l'orologio...";
+
+        if (initialOverlayMessage) {
+            // Testo iniziale del messaggio
+            initialOverlayMessage.textContent = "Contatto l'orologio...";
+
+            // Applichiamo subito la classe per rendere il testo nero
+            initialOverlayMessage.classList.add('text-readable'); 
+        }
 
         // Invia il comando per richiedere lo stato iniziale.
-        // Non attendiamo la risposta qui, lasciamo che il polling la gestisca.
         sendCommandToServer('GET_STATE');
         
         // Avvia il ciclo di polling che riceverà lo stato e sbloccherà l'UI.
-        // La funzione `handleClockData` si occuperà di cambiare lo stato da
-        // INITIALIZING a CONFIGURING quando arriverà la prima risposta valida.
         startPollingForResponses();
 
-        // Aggiungiamo un timeout di sicurezza per l'interfaccia utente.
-        // Se dopo 20 secondi l'app è ancora in stato 'INITIALIZING',
-        // qualcosa è andato storto e lo comunichiamo all'utente.
+        // Aggiungiamo un timeout di sicurezza.
         setTimeout(() => {
             if (currentAppState === APP_STATES.INITIALIZING) {
                 console.error("Timeout di inizializzazione: nessuna risposta di stato ricevuta.");
                 setAppState(APP_STATES.ERROR);
-                if (initialOverlayMessage) initialOverlayMessage.textContent = "L'orologio non risponde. Assicurati che sia acceso e in modalità Setup. Ricarica la pagina per riprovare.";
+                
+                if (initialOverlayMessage) {
+                    // Imposta il testo del messaggio di errore
+                    initialOverlayMessage.textContent = "L'orologio non risponde. Assicurati che sia acceso e in modalità Setup. Ricarica la pagina per riprovare.";
+                    
+                     // La classe è già stata aggiunta prima, ma ri-applicarla non fa male
+                    // e garantisce che sia presente anche se la logica dovesse cambiare.
+                    initialOverlayMessage.classList.add('text-readable'); 
+                }
+
                 if (initialOverlaySpinner) initialOverlaySpinner.style.display = 'none';
-                if (responsePollController) responsePollController.abort(); // Ferma il polling
+                if (responsePollController) responsePollController.abort();
             }
         }, 20000); // Timeout di 20 secondi
     }

@@ -10,7 +10,20 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <!-- Stili CSS Personalizzati (assicurati che il percorso sia corretto) -->
     <link rel="stylesheet" href="style.css">
+    <style>
+        /*
+          Questa regola si applica SOLO all'elemento con id="initial-overlay-message"
+          e SOLO quando ha anche la classe "text-error" (che viene aggiunta da JavaScript
+          in caso di timeout). In questo modo non interferisce con nessun altro testo
+          della WebApp.
+        */
+		#initial-overlay-message.text-readable {
+			color: black !important;
+			font-weight: bold;
+		}
+    </style>
 </head>
+
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
         <div class="container">
