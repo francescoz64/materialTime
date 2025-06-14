@@ -16,7 +16,7 @@ exports.handler = async (event, context) => {
 	// MODIFICARE QUESTI VALORI PER OGNI NUOVA FIRMWARE RELEASE
 	//
 	const latestFirmware = {
-	version: "1.0.1",
+	version: "1.0.0",
 	firmware_url: "https://materialtime.netlify.app/firmware/esp32/firmware.bin",
 	size: 853472 // <-- IMPORTANTE: La dimensione ESATTA del file firmware.bin in byte
 	};
