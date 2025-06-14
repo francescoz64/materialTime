@@ -17,7 +17,7 @@ exports.handler = async (event, context) => {
 	//
 	const latestFirmware = {
 	version: "1.0.0",
-	firmware_url: "https://materialtime.netlify.app/firmware/esp32/firmware.bin",
+	firmware_url: "https://github.com/francescoz64/materialtime-firmwareESP32/releases/download/v1.0.1/firmware.bin",
 	size: 853472 // <-- IMPORTANTE: La dimensione ESATTA del file firmware.bin in byte
 	};
 	// Il campo size è cruciale. Il codice OTA sull'ESP32 usa questo valore per dire al sistema operativo "sto per scrivere un file di X byte". 
